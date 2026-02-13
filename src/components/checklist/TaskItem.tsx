@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDocumentStore } from '@/store/document-store'
+import { useUiStore } from '@/store/ui-store'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import type { Task } from '@/lib/markdown/types'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Maximize2, Archive } from 'lucide-react'
 
 interface TaskItemProps {
   task: Task
@@ -13,6 +14,7 @@ export function TaskItem({ task }: TaskItemProps) {
   const toggleTask = useDocumentStore((s) => s.toggleTask)
   const updateTaskContent = useDocumentStore((s) => s.updateTaskContent)
   const deleteTask = useDocumentStore((s) => s.deleteTask)
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId)
 
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(task.content)
@@ -45,7 +47,7 @@ export function TaskItem({ task }: TaskItemProps) {
 
   return (
     <div>
-      <div className="group flex items-start gap-2.5 py-2 px-2 -mx-2 rounded-lg hover:bg-accent/40 transition-colors duration-150">
+      <div className={`group flex items-start gap-2.5 py-2 px-2 -mx-2 rounded-lg hover:bg-accent/40 transition-colors duration-150 ${task.metadata.archived ? 'opacity-50' : ''}`}>
         <Checkbox
           checked={task.checked}
           onCheckedChange={() => toggleTask(task.id)}
@@ -76,6 +78,12 @@ export function TaskItem({ task }: TaskItemProps) {
             >
               {task.displayContent}
             </span>
+            {task.metadata.archived && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground bg-secondary rounded px-1.5 py-0.5 ml-1.5 align-middle">
+                <Archive className="size-2.5" />
+                Archived
+              </span>
+            )}
             {task.metadata.labels.length > 0 && (
               <div className="flex gap-1 mt-0.5 flex-wrap">
                 {task.metadata.labels.map((label) => (
@@ -92,6 +100,15 @@ export function TaskItem({ task }: TaskItemProps) {
             )}
           </div>
         )}
+
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => setSelectedTaskId(task.id)}
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all shrink-0"
+        >
+          <Maximize2 className="size-3.5" />
+        </Button>
 
         <Button
           variant="ghost"

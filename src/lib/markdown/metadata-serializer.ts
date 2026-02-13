@@ -34,6 +34,10 @@ export function serializeMetadata(
     tokens.push(`built-by:${metadata.builtBy}`)
   }
 
+  if (metadata.archived) {
+    tokens.push('archived:true')
+  }
+
   if (tokens.length === 0) return displayContent
   return `${displayContent} ${tokens.join(' ')}`
 }

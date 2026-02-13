@@ -347,6 +347,21 @@
 }
 
 /* ═══════════════════════════════════════════════
+   Detail panel slide animation
+   ═══════════════════════════════════════════════ */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.detail-panel-enter {
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ═══════════════════════════════════════════════
    Split view divider
    ═══════════════════════════════════════════════ */
 .split-divider {

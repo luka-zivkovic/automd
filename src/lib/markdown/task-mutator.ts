@@ -206,6 +206,36 @@ export function updateTaskMetadata(
   return updateTaskContent(ast, taskId, newContent)
 }
 
+export function updateTaskDescription(
+  ast: Root,
+  taskId: string,
+  description: string | null
+): Root {
+  const cloned = structuredClone(ast)
+  const found = findNodeById(cloned, taskId)
+  if (!found) return cloned
+
+  // Keep first paragraph (task content) + lists (subtasks), remove other paragraphs
+  found.node.children = found.node.children.filter((child, idx) => {
+    if (child.type !== 'paragraph') return true
+    // Keep the first paragraph
+    const pIdx = found.node.children.slice(0, idx + 1).filter(c => c.type === 'paragraph').length
+    return pIdx <= 1
+  })
+
+  // Append new description paragraphs
+  if (description && description.trim()) {
+    for (const line of description.split('\n').filter(Boolean)) {
+      found.node.children.push({
+        type: 'paragraph',
+        children: [{ type: 'text', value: line } as Text],
+      } as Paragraph)
+    }
+  }
+
+  return cloned
+}
+
 export function deleteTask(ast: Root, taskId: string): Root {
   const cloned = structuredClone(ast)
   const found = findNodeById(cloned, taskId)
@@ -221,5 +251,102 @@ export function deleteTask(ast: Root, taskId: string): Root {
     }
   }
 
+  return cloned
+}
+
+// ─── Column Mutations ────────────────────────────────────────────────
+
+/**
+ * Find the end index (exclusive) of a column block starting at the given heading index.
+ * A column block spans from the heading to the node before the next h2 heading (or end of children).
+ */
+function findColumnBlockEnd(ast: Root, headingRootIndex: number): number {
+  for (let i = headingRootIndex + 1; i < ast.children.length; i++) {
+    const child = ast.children[i]
+    if (child.type === 'heading' && (child as Heading).depth === 2) {
+      return i
+    }
+  }
+  return ast.children.length
+}
+
+/**
+ * Get the root-children index where the Nth h2 heading starts (0-based among h2s).
+ * Returns ast.children.length if targetIndex is beyond the last column.
+ */
+function getInsertionPointForColumnIndex(ast: Root, targetIndex: number): number {
+  let h2Count = 0
+  for (let i = 0; i < ast.children.length; i++) {
+    const child = ast.children[i]
+    if (child.type === 'heading' && (child as Heading).depth === 2) {
+      if (h2Count === targetIndex) return i
+      h2Count++
+    }
+  }
+  return ast.children.length
+}
+
+export function addColumn(ast: Root, title: string): Root {
+  const cloned = structuredClone(ast)
+
+  const newHeading: Heading = {
+    type: 'heading',
+    depth: 2,
+    children: [{ type: 'text', value: title } as Text],
+  }
+
+  const newList: List = {
+    type: 'list',
+    ordered: false,
+    spread: false,
+    children: [],
+  }
+
+  cloned.children.push(newHeading as RootContent, newList as RootContent)
+  return cloned
+}
+
+export function renameColumn(ast: Root, columnId: string, newTitle: string): Root {
+  const cloned = structuredClone(ast)
+  const found = findHeadingById(cloned, columnId)
+  if (!found) return cloned
+
+  // Update the first text child of the heading
+  for (const child of found.node.children) {
+    if (child.type === 'text') {
+      ;(child as Text).value = newTitle
+      break
+    }
+  }
+
+  return cloned
+}
+
+export function deleteColumn(ast: Root, columnId: string): Root {
+  const cloned = structuredClone(ast)
+  const found = findHeadingById(cloned, columnId)
+  if (!found) return cloned
+
+  const blockEnd = findColumnBlockEnd(cloned, found.rootIndex)
+  const removeCount = blockEnd - found.rootIndex
+
+  cloned.children.splice(found.rootIndex, removeCount)
+  return cloned
+}
+
+export function moveColumn(ast: Root, columnId: string, targetIndex: number): Root {
+  const cloned = structuredClone(ast)
+  const found = findHeadingById(cloned, columnId)
+  if (!found) return cloned
+
+  // Extract the full column block (heading + content until next h2)
+  const blockEnd = findColumnBlockEnd(cloned, found.rootIndex)
+  const blockNodes = cloned.children.splice(found.rootIndex, blockEnd - found.rootIndex)
+
+  // Find insertion point based on the target index among remaining h2 headings
+  const insertAt = getInsertionPointForColumnIndex(cloned, targetIndex)
+
+  // Re-insert the block
+  cloned.children.splice(insertAt, 0, ...blockNodes)
   return cloned
 }

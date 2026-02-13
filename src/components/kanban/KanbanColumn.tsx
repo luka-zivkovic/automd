@@ -6,13 +6,15 @@ import {
 import type { Column } from '@/lib/markdown/types'
 import { KanbanCard } from './KanbanCard'
 import { ColumnHeader } from './ColumnHeader'
-import { AddTaskInput } from '../checklist/AddTaskInput'
+import { RichTaskInput } from '@/components/input/RichTaskInput'
 
 interface KanbanColumnProps {
   column: Column
+  columnIndex: number
+  totalColumns: number
 }
 
-export function KanbanColumn({ column }: KanbanColumnProps) {
+export function KanbanColumn({ column, columnIndex, totalColumns }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column.id}`,
     data: { type: 'column', column },
@@ -28,7 +30,7 @@ export function KanbanColumn({ column }: KanbanColumnProps) {
           : 'border-border shadow-sm'
       }`}
     >
-      <ColumnHeader column={column} />
+      <ColumnHeader column={column} columnIndex={columnIndex} totalColumns={totalColumns} />
 
       <div
         ref={setNodeRef}
@@ -51,7 +53,7 @@ export function KanbanColumn({ column }: KanbanColumnProps) {
       </div>
 
       <div className="px-3 pb-3">
-        <AddTaskInput columnId={column.id} />
+        <RichTaskInput columnId={column.id} />
       </div>
     </div>
   )

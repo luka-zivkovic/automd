@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Column } from '@/lib/markdown/types'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { TaskItem } from './TaskItem'
-import { AddTaskInput } from './AddTaskInput'
+import { RichTaskInput } from '@/components/input/RichTaskInput'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface TaskGroupProps {
@@ -68,7 +68,7 @@ export function TaskGroup({ column }: TaskGroupProps) {
               <TaskItem key={task.id} task={task} />
             ))}
           </div>
-          <AddTaskInput columnId={column.id} />
+          <RichTaskInput columnId={column.id} />
         </CardContent>
       )}
     </Card>

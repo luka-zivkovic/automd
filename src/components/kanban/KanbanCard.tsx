@@ -1,11 +1,13 @@
+import { useRef } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useDocumentStore } from '@/store/document-store'
 import { usePreferencesStore } from '@/store/preferences-store'
+import { useUiStore } from '@/store/ui-store'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import type { Task } from '@/lib/markdown/types'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, Archive } from 'lucide-react'
 import { TaskMetadataDisplay } from './TaskMetadataDisplay'
 
 interface KanbanCardProps {
@@ -16,6 +18,8 @@ interface KanbanCardProps {
 export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
   const toggleTask = useDocumentStore((s) => s.toggleTask)
   const cardDisplay = usePreferencesStore((s) => s.cardDisplay)
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId)
+  const pointerStart = useRef<{ x: number; y: number } | null>(null)
 
   const {
     attributes,
@@ -45,11 +49,29 @@ export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
       style={style}
       {...attributes}
       {...listeners}
+      onPointerDown={(e) => {
+        pointerStart.current = { x: e.clientX, y: e.clientY }
+        // Forward to dnd-kit's listener
+        if (listeners?.onPointerDown) {
+          ;(listeners.onPointerDown as (event: typeof e) => void)(e)
+        }
+      }}
+      onPointerUp={(e) => {
+        if (pointerStart.current && !isDragging) {
+          const dx = e.clientX - pointerStart.current.x
+          const dy = e.clientY - pointerStart.current.y
+          const distance = Math.sqrt(dx * dx + dy * dy)
+          if (distance < 5) {
+            setSelectedTaskId(task.id)
+          }
+        }
+        pointerStart.current = null
+      }}
       className={`p-3 mb-1.5 group rounded-lg border bg-background transition-all duration-150 cursor-grab active:cursor-grabbing ${
         isDragOverlay
           ? 'kanban-card-dragging ring-2 ring-primary/50 scale-[1.02]'
           : 'border-border/60 hover:border-border hover:shadow-sm'
-      } ${isDragging ? 'shadow-none border-transparent' : ''}`}
+      } ${isDragging ? 'shadow-none border-transparent' : ''} ${task.metadata.archived ? 'opacity-50' : ''}`}
     >
       <div className="flex items-start gap-2">
         <div className="mt-0.5 text-muted-foreground/30 group-hover:text-muted-foreground shrink-0 transition-opacity duration-150">
@@ -71,6 +93,12 @@ export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
           }`}
         >
           {task.displayContent}
+          {task.metadata.archived && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground bg-secondary rounded px-1.5 py-0.5 ml-1.5 align-middle">
+              <Archive className="size-2.5" />
+              Archived
+            </span>
+          )}
         </span>
       </div>
 

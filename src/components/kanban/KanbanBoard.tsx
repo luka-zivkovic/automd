@@ -16,15 +16,38 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useDocumentStore } from '@/store/document-store'
+import { useFilteredColumns } from '@/hooks/useFilteredColumns'
 import type { Task } from '@/lib/markdown/types'
 import { KanbanColumn } from './KanbanColumn'
 import { KanbanCard } from './KanbanCard'
-import { Columns3 } from 'lucide-react'
+import { AddColumnButton } from './AddColumnButton'
+import { Button } from '@/components/ui/button'
+import { Columns3, Archive } from 'lucide-react'
 
 export function KanbanBoard() {
   const columns = useDocumentStore((s) => s.columns)
   const moveTask = useDocumentStore((s) => s.moveTask)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+
+  const archivedCount = useMemo(
+    () => columns.flatMap((c) => c.tasks).filter((t) => t.metadata.archived).length,
+    [columns]
+  )
+
+  const archiveFilteredColumns = useMemo(
+    () =>
+      showArchived
+        ? columns
+        : columns.map((col) => ({
+            ...col,
+            tasks: col.tasks.filter((t) => !t.metadata.archived),
+          })),
+    [columns, showArchived]
+  )
+
+  // Apply search/filter-store filters on top of archive filtering
+  const filteredColumns = useFilteredColumns(archiveFilteredColumns)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -139,25 +162,44 @@ export function KanbanBoard() {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-5 p-6 h-full overflow-x-auto">
-        {columns.map((col) => (
-          <KanbanColumn key={col.id} column={col} />
-        ))}
-
-        {columns.length === 0 && (
-          <div className="flex items-center justify-center w-full">
-            <div className="text-center max-w-sm">
-              <div className="empty-state-icon size-16 mx-auto mb-5 flex items-center justify-center">
-                <Columns3 className="size-7 text-muted-foreground" />
-              </div>
-              <h3 className="font-display text-2xl text-foreground italic">No columns yet</h3>
-              <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
-                Use <code className="bg-secondary px-1.5 py-0.5 rounded text-xs font-mono">## Heading</code>{' '}
-                in your markdown to create kanban columns.
-              </p>
-            </div>
+      <div className="flex flex-col h-full">
+        {/* Archived toggle */}
+        {archivedCount > 0 && (
+          <div className="px-6 pt-4">
+            <Button
+              variant={showArchived ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setShowArchived(!showArchived)}
+              className="text-xs text-muted-foreground"
+            >
+              <Archive className="size-3" />
+              {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
+            </Button>
           </div>
         )}
+
+        <div className="flex gap-5 p-6 flex-1 overflow-x-auto">
+          {filteredColumns.map((col, idx) => (
+            <KanbanColumn key={col.id} column={col} columnIndex={idx} totalColumns={filteredColumns.length} />
+          ))}
+
+          <AddColumnButton />
+
+          {columns.length === 0 && (
+            <div className="flex items-center justify-center w-full">
+              <div className="text-center max-w-sm">
+                <div className="empty-state-icon size-16 mx-auto mb-5 flex items-center justify-center">
+                  <Columns3 className="size-7 text-muted-foreground" />
+                </div>
+                <h3 className="font-display text-2xl text-foreground italic">No columns yet</h3>
+                <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+                  Use <code className="bg-secondary px-1.5 py-0.5 rounded text-xs font-mono">## Heading</code>{' '}
+                  in your markdown to create kanban columns.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <DragOverlay dropAnimation={null}>

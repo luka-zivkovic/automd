@@ -7,10 +7,11 @@ const ESTIMATE_RE = /est:([\d.]+)h?/i
 const PRIORITY_RE = /priority:(high|medium|low)/i
 const CREATED_BY_RE = /created-by:([\w-]+)/i
 const BUILT_BY_RE = /built-by:([\w-]+)/i
+const ARCHIVED_RE = /archived:true/i
 
 // All token patterns for stripping — order matters (longer patterns first)
 const ALL_TOKENS_RE =
-  /\s*(?:created-by:[\w-]+|built-by:[\w-]+|priority:(?:high|medium|low)|est:[\d.]+h?|due:\d{4}-\d{2}-\d{2}|@\w[\w-]*|#\w[\w-]*)\s*/gi
+  /\s*(?:archived:true|created-by:[\w-]+|built-by:[\w-]+|priority:(?:high|medium|low)|est:[\d.]+h?|due:\d{4}-\d{2}-\d{2}|@\w[\w-]*|#\w[\w-]*)\s*/gi
 
 export function emptyMetadata(): TaskMetadata {
   return {
@@ -21,6 +22,7 @@ export function emptyMetadata(): TaskMetadata {
     priority: null,
     createdBy: null,
     builtBy: null,
+    archived: false,
   }
 }
 
@@ -58,6 +60,9 @@ export function parseMetadata(content: string): {
 
   const builtMatch = content.match(BUILT_BY_RE)
   if (builtMatch) metadata.builtBy = builtMatch[1]
+
+  // Extract archived flag
+  if (ARCHIVED_RE.test(content)) metadata.archived = true
 
   // Strip all tokens to get display content
   const displayContent = content

@@ -1,16 +1,35 @@
 import { ViewSwitcher } from './ViewSwitcher'
 import { useDocumentStore } from '@/store/document-store'
+import { useFilesStore } from '@/store/files-store'
+import { useUiStore } from '@/store/ui-store'
 import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, FileText } from 'lucide-react'
+import { Upload, Download, FileText, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight } from 'lucide-react'
 import { UserBadge } from '@/components/settings/UserBadge'
+import { ThemeToggle } from '@/components/settings/ThemeToggle'
+import { getProjectColorClass } from '@/lib/utils/project-colors'
 
 export function Header() {
   const tasks = useDocumentStore((s) => s.tasks)
+  const undo = useDocumentStore((s) => s.undo)
+  const redo = useDocumentStore((s) => s.redo)
+  const canUndo = useDocumentStore((s) => s.canUndo)
+  const canRedo = useDocumentStore((s) => s.canRedo)
   const { importFile } = useFileImport()
   const { exportFile } = useFileExport()
+
+  const sidebarOpen = useUiStore((s) => s.sidebarOpen)
+  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
+
+  const files = useFilesStore((s) => s.files)
+  const projects = useFilesStore((s) => s.projects)
+  const activeFileId = useFilesStore((s) => s.activeFileId)
+  const activeFile = files.find((f) => f.id === activeFileId)
+  const activeProject = activeFile?.projectId
+    ? projects.find((p) => p.id === activeFile.projectId)
+    : null
 
   const completedCount = tasks.filter((t) => t.checked).length
   const totalCount = tasks.length
@@ -19,8 +38,27 @@ export function Header() {
   return (
     <header className="shrink-0 relative z-10">
       <div className="flex items-center justify-between px-5 py-3 bg-background/80 backdrop-blur-md">
-        {/* Logo + progress */}
+        {/* Left side: sidebar toggle + logo + file name + progress */}
         <div className="flex items-center gap-5">
+          {/* Sidebar toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {sidebarOpen ? (
+                  <PanelLeftClose className="size-4" />
+                ) : (
+                  <PanelLeftOpen className="size-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{sidebarOpen ? 'Close sidebar' : 'Open sidebar'}</TooltipContent>
+          </Tooltip>
+
           <div className="flex items-center gap-2.5">
             <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center">
               <FileText className="size-3.5 text-primary" />
@@ -29,6 +67,27 @@ export function Header() {
               automd
             </h1>
           </div>
+
+          {/* Active file name with project breadcrumb */}
+          {activeFile && (
+            <>
+              <div className="w-px h-4 bg-border" />
+              <div className="flex items-center gap-1.5 min-w-0 max-w-[280px]">
+                {activeProject && (
+                  <>
+                    <div className={`size-2 rounded-full shrink-0 ${getProjectColorClass(activeProject.color)}`} />
+                    <span className="text-sm font-medium text-muted-foreground truncate">
+                      {activeProject.name}
+                    </span>
+                    <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
+                  </>
+                )}
+                <span className="text-sm font-medium text-muted-foreground truncate">
+                  {activeFile.name}
+                </span>
+              </div>
+            </>
+          )}
 
           {totalCount > 0 && (
             <div className="flex items-center gap-2.5">
@@ -49,7 +108,29 @@ export function Header() {
 
         <div className="flex items-center gap-1">
           <UserBadge />
+          <ThemeToggle />
           <div className="w-px h-4 bg-border mx-1" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
+                <Undo2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
+                <Redo2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+          </Tooltip>
+
+          <div className="w-px h-4 bg-border mx-1" />
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="sm" onClick={importFile} className="text-muted-foreground hover:text-foreground">

@@ -8,6 +8,7 @@ export interface TaskMetadata {
   priority: 'high' | 'medium' | 'low' | null
   createdBy: string | null
   builtBy: string | null
+  archived: boolean
 }
 
 export interface Task {
@@ -40,4 +41,21 @@ export interface DocumentState {
 export interface IdCache {
   fingerprints: Map<string, string> // fingerprint -> id
   ids: Map<string, string> // id -> fingerprint
+}
+
+export interface BoardFile {
+  id: string
+  name: string
+  markdown: string
+  createdAt: number
+  updatedAt: number
+  projectId: string | null
+}
+
+export interface Project {
+  id: string
+  name: string
+  color: string
+  fileIds: string[]
+  createdAt: number
 }
