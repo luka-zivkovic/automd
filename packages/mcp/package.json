@@ -1,0 +1,24 @@
+{
+  "name": "@automd/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "bin": {
+    "automd-mcp": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@automd/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.2"
+  }
+}
