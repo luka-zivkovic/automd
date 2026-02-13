@@ -11,6 +11,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@automd/shared": "workspace:*",
     "@codemirror/lang-markdown": "^6.3.1",
     "@codemirror/language": "^6.10.3",
     "@codemirror/state": "^6.5.4",
