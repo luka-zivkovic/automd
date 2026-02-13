@@ -9,6 +9,7 @@ import { Sidebar } from '@/components/sidebar/Sidebar'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useActiveFileSync } from '@/hooks/useActiveFileSync'
+import { useServerSync } from '@/hooks/useServerSync'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 
@@ -16,6 +17,7 @@ function App() {
   const activeView = useUiStore((s) => s.activeView)
   useKeyboardShortcuts()
   useActiveFileSync()
+  useServerSync()
 
   return (
     <TooltipProvider>
