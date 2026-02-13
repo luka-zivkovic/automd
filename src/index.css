@@ -1,0 +1,370 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Typography system */
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ═══════════════════════════════════════════════
+   STUDIO — Light Theme
+   Clean slate canvas, amber accent, precise craft
+   ═══════════════════════════════════════════════ */
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(0.985 0.002 260);
+  --foreground: oklch(0.145 0.015 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0.015 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0.015 260);
+
+  /* Primary — amber/gold, warm & confident */
+  --primary: oklch(0.68 0.16 75);
+  --primary-foreground: oklch(0.15 0.02 75);
+
+  /* Secondary — cool gray */
+  --secondary: oklch(0.955 0.005 260);
+  --secondary-foreground: oklch(0.35 0.015 260);
+
+  /* Muted — soft slate */
+  --muted: oklch(0.96 0.004 260);
+  --muted-foreground: oklch(0.50 0.01 260);
+
+  /* Accent — light amber wash */
+  --accent: oklch(0.96 0.03 75);
+  --accent-foreground: oklch(0.30 0.02 75);
+
+  --destructive: oklch(0.58 0.22 28);
+
+  /* Borders — crisp, cool */
+  --border: oklch(0.915 0.005 260);
+  --input: oklch(0.915 0.005 260);
+  --ring: oklch(0.68 0.16 75);
+
+  --chart-1: oklch(0.68 0.16 75);
+  --chart-2: oklch(0.60 0.14 160);
+  --chart-3: oklch(0.55 0.12 240);
+  --chart-4: oklch(0.72 0.14 45);
+  --chart-5: oklch(0.55 0.15 310);
+
+  --sidebar: oklch(0.975 0.003 260);
+  --sidebar-foreground: oklch(0.145 0.015 260);
+  --sidebar-primary: oklch(0.68 0.16 75);
+  --sidebar-primary-foreground: oklch(0.15 0.02 75);
+  --sidebar-accent: oklch(0.96 0.03 75);
+  --sidebar-accent-foreground: oklch(0.30 0.02 75);
+  --sidebar-border: oklch(0.915 0.005 260);
+  --sidebar-ring: oklch(0.68 0.16 75);
+}
+
+/* ═══════════════════════════════════════════════
+   STUDIO — Dark Theme
+   Deep slate, warm amber glow
+   ═══════════════════════════════════════════════ */
+.dark {
+  --background: oklch(0.13 0.012 260);
+  --foreground: oklch(0.93 0.006 260);
+  --card: oklch(0.17 0.012 260);
+  --card-foreground: oklch(0.93 0.006 260);
+  --popover: oklch(0.17 0.012 260);
+  --popover-foreground: oklch(0.93 0.006 260);
+  --primary: oklch(0.75 0.15 75);
+  --primary-foreground: oklch(0.13 0.012 260);
+  --secondary: oklch(0.22 0.01 260);
+  --secondary-foreground: oklch(0.88 0.006 260);
+  --muted: oklch(0.22 0.01 260);
+  --muted-foreground: oklch(0.62 0.01 260);
+  --accent: oklch(0.24 0.03 75);
+  --accent-foreground: oklch(0.90 0.006 260);
+  --destructive: oklch(0.65 0.20 25);
+  --border: oklch(0.26 0.01 260);
+  --input: oklch(0.24 0.01 260);
+  --ring: oklch(0.75 0.15 75);
+  --chart-1: oklch(0.75 0.15 75);
+  --chart-2: oklch(0.65 0.14 160);
+  --chart-3: oklch(0.60 0.12 240);
+  --chart-4: oklch(0.78 0.14 45);
+  --chart-5: oklch(0.62 0.15 310);
+  --sidebar: oklch(0.15 0.012 260);
+  --sidebar-foreground: oklch(0.93 0.006 260);
+  --sidebar-primary: oklch(0.75 0.15 75);
+  --sidebar-primary-foreground: oklch(0.13 0.012 260);
+  --sidebar-accent: oklch(0.24 0.03 75);
+  --sidebar-accent-foreground: oklch(0.90 0.006 260);
+  --sidebar-border: oklch(0.26 0.01 260);
+  --sidebar-ring: oklch(0.75 0.15 75);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   Display font utility
+   ═══════════════════════════════════════════════ */
+.font-display {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+/* ═══════════════════════════════════════════════
+   Background grain texture
+   Subtle paper-like noise for depth
+   ═══════════════════════════════════════════════ */
+.paper-texture {
+  position: relative;
+}
+.paper-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 512px 512px;
+  mix-blend-mode: multiply;
+  z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════
+   Header gradient line
+   ═══════════════════════════════════════════════ */
+.header-accent-line {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    oklch(0.68 0.16 75 / 0.4) 20%,
+    oklch(0.68 0.16 75) 50%,
+    oklch(0.68 0.16 75 / 0.4) 80%,
+    transparent 100%
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   CodeMirror — clean studio editor
+   ═══════════════════════════════════════════════ */
+.cm-editor {
+  font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+  font-size: 13px !important;
+  line-height: 1.7 !important;
+  background: transparent !important;
+}
+.cm-editor .cm-gutters {
+  background: transparent !important;
+  border-right: 1px solid var(--border) !important;
+  color: var(--muted-foreground) !important;
+  font-size: 11px !important;
+  padding-right: 8px !important;
+}
+.cm-editor .cm-activeLineGutter {
+  background: transparent !important;
+  color: var(--foreground) !important;
+}
+.cm-editor .cm-activeLine {
+  background: oklch(0.68 0.16 75 / 0.04) !important;
+}
+.cm-editor .cm-cursor {
+  border-left-color: oklch(0.68 0.16 75) !important;
+  border-left-width: 2px !important;
+}
+.cm-editor .cm-selectionBackground {
+  background: oklch(0.68 0.16 75 / 0.12) !important;
+}
+.cm-editor .cm-content {
+  padding: 1rem 0 !important;
+}
+.cm-editor .cm-line {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+}
+
+/* ═══════════════════════════════════════════════
+   Task animations
+   ═══════════════════════════════════════════════ */
+.task-enter {
+  animation: taskSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes taskSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Staggered list animation */
+.stagger-enter > * {
+  animation: staggerFade 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger-enter > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-enter > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-enter > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-enter > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-enter > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-enter > *:nth-child(6) { animation-delay: 200ms; }
+.stagger-enter > *:nth-child(7) { animation-delay: 240ms; }
+.stagger-enter > *:nth-child(8) { animation-delay: 280ms; }
+@keyframes staggerFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Progress bar glow pulse */
+[data-slot="progress-indicator"] {
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Kanban card drag elevation */
+.kanban-card-dragging {
+  box-shadow:
+    0 20px 40px oklch(0.15 0.015 260 / 0.15),
+    0 4px 12px oklch(0.15 0.015 260 / 0.1);
+}
+
+/* ═══════════════════════════════════════════════
+   Custom checkbox animation
+   ═══════════════════════════════════════════════ */
+[data-slot="checkbox"][data-state="checked"] {
+  animation: checkPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes checkPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.85); }
+  100% { transform: scale(1); }
+}
+
+/* ═══════════════════════════════════════════════
+   Hover card lift
+   ═══════════════════════════════════════════════ */
+.card-hover {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 16px oklch(0.15 0.015 260 / 0.08),
+    0 1px 4px oklch(0.15 0.015 260 / 0.05);
+}
+
+/* ═══════════════════════════════════════════════
+   Scrollbar — minimal, cool
+   ═══════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.78 0.005 260);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.68 0.16 75 / 0.6);
+}
+
+/* ═══════════════════════════════════════════════
+   Gradient text utility
+   ═══════════════════════════════════════════════ */
+.text-gradient {
+  background: linear-gradient(135deg, oklch(0.68 0.16 75), oklch(0.72 0.14 45));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ═══════════════════════════════════════════════
+   Empty state illustration
+   ═══════════════════════════════════════════════ */
+.empty-state-icon {
+  background: linear-gradient(135deg, var(--muted) 0%, var(--accent) 100%);
+  border-radius: 1rem;
+}
+
+/* ═══════════════════════════════════════════════
+   Split view divider
+   ═══════════════════════════════════════════════ */
+.split-divider {
+  position: relative;
+}
+.split-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 24px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.15s, height 0.15s;
+}
+.split-divider:hover::after {
+  background: var(--primary);
+  height: 32px;
+}
