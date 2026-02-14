@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useFilesStore } from '@/store/files-store'
 import { useDocumentStore } from '@/store/document-store'
+import { useConnectionStore } from '@/store/connection-store'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 
 const SERVER_URL = import.meta.env.VITE_AUTOMD_SERVER ?? ''
@@ -9,13 +10,21 @@ const WS_URL = SERVER_URL ? SERVER_URL.replace(/^http/, 'ws') + '/ws' : ''
 
 async function apiFetch(path: string, options?: RequestInit) {
   if (!API_BASE) return null
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-  })
-  if (!res.ok) return null
-  if (res.status === 204) return null
-  return res.json()
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+    })
+    if (!res.ok) {
+      console.warn(`[automd] API ${options?.method ?? 'GET'} ${path} failed: ${res.status}`)
+      return null
+    }
+    if (res.status === 204) return null
+    return res.json()
+  } catch (err) {
+    console.warn('[automd] API fetch failed:', err)
+    return null
+  }
 }
 
 /**
@@ -25,11 +34,14 @@ async function apiFetch(path: string, options?: RequestInit) {
 export function useServerSync() {
   const wsRef = useRef<WebSocket | null>(null)
   const isServerUpdateRef = useRef(false)
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectAttemptRef = useRef(0)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
     if (!SERVER_URL) return // Local-only mode
 
-    let mounted = true
+    mountedRef.current = true
 
     // 1. Initial fetch: load files + projects from server
     async function loadFromServer() {
@@ -38,7 +50,7 @@ export function useServerSync() {
         apiFetch('/projects'),
       ])
 
-      if (!mounted) return
+      if (!mountedRef.current) return
 
       if (filesData && Array.isArray(filesData)) {
         // Fetch full markdown for each file
@@ -56,7 +68,7 @@ export function useServerSync() {
           })
         )
 
-        if (!mounted) return
+        if (!mountedRef.current) return
 
         isServerUpdateRef.current = true
         useFilesStore.setState({
@@ -72,9 +84,19 @@ export function useServerSync() {
     loadFromServer()
 
     // 2. WebSocket: listen for real-time updates from other clients/agents
-    if (WS_URL) {
+    function connectWs() {
+      if (!mountedRef.current || !WS_URL) return
+
       const ws = new WebSocket(WS_URL)
       wsRef.current = ws
+
+      ws.onopen = () => {
+        console.log('[automd] WebSocket connected')
+        reconnectAttemptRef.current = 0
+        useConnectionStore.getState().setStatus('connected')
+        // Re-fetch full state to catch any events missed during disconnection
+        loadFromServer()
+      }
 
       ws.onmessage = (event) => {
         try {
@@ -94,6 +116,7 @@ export function useServerSync() {
             case 'file:created': {
               // Refetch to get full file data
               apiFetch(`/files/${msg.payload.id}`).then((file) => {
+                if (!mountedRef.current) return
                 if (file) {
                   useFilesStore.setState((state) => ({
                     files: [...state.files, {
@@ -118,6 +141,7 @@ export function useServerSync() {
             case 'project:updated': {
               // Refetch all projects
               apiFetch('/projects').then((projects) => {
+                if (!mountedRef.current) return
                 if (projects) {
                   useFilesStore.setState({ projects })
                 }
@@ -138,8 +162,26 @@ export function useServerSync() {
 
       ws.onclose = () => {
         console.log('[automd] WebSocket disconnected')
+        wsRef.current = null
+        if (!mountedRef.current) return
+
+        useConnectionStore.getState().setStatus('reconnecting')
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s max
+        const attempt = reconnectAttemptRef.current++
+        const delay = Math.min(1000 * Math.pow(2, attempt), 30000)
+        console.log(`[automd] Reconnecting in ${delay}ms (attempt ${attempt + 1})`)
+
+        reconnectTimeoutRef.current = setTimeout(connectWs, delay)
+      }
+
+      ws.onerror = (err) => {
+        console.error('[automd] WebSocket error:', err)
+        // onclose will fire after onerror, so reconnection happens there
       }
     }
+
+    connectWs()
 
     // 3. Forward local markdown changes to the server
     const unsubMarkdown = useDocumentStore.subscribe(
@@ -161,12 +203,17 @@ export function useServerSync() {
     )
 
     return () => {
-      mounted = false
+      mountedRef.current = false
       unsubMarkdown()
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
+      useConnectionStore.getState().setStatus('disconnected')
     }
   }, [])
 }

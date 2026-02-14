@@ -1,4 +1,5 @@
 import { ViewSwitcher } from './ViewSwitcher'
+import { ConnectionStatus } from './ConnectionStatus'
 import { useDocumentStore } from '@/store/document-store'
 import { useFilesStore } from '@/store/files-store'
 import { useUiStore } from '@/store/ui-store'
@@ -107,6 +108,7 @@ export function Header() {
         <ViewSwitcher />
 
         <div className="flex items-center gap-1">
+          <ConnectionStatus />
           <UserBadge />
           <ThemeToggle />
           <div className="w-px h-4 bg-border mx-1" />
