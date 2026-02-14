@@ -10,6 +10,11 @@ function json(data: unknown) {
   return text(JSON.stringify(data, null, 2))
 }
 
+function errorResponse(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err)
+  return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true as const }
+}
+
 export function registerTools(server: McpServer) {
   // ─── Board Tools ─────────────────────────────────────────────────
 
@@ -17,8 +22,12 @@ export function registerTools(server: McpServer) {
     title: 'List Boards',
     description: 'List all boards with their task counts',
   }, async () => {
-    const boards = await api.listFiles()
-    return json(boards)
+    try {
+      const boards = await api.listFiles()
+      return json(boards)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('get_board', {
@@ -26,8 +35,12 @@ export function registerTools(server: McpServer) {
     description: 'Get a board with its columns and tasks',
     inputSchema: { boardId: z.string().describe('The board ID') },
   }, async ({ boardId }) => {
-    const board = await api.getFile(boardId)
-    return json(board)
+    try {
+      const board = await api.getFile(boardId)
+      return json(board)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('get_board_markdown', {
@@ -35,8 +48,12 @@ export function registerTools(server: McpServer) {
     description: 'Get the raw markdown content of a board',
     inputSchema: { boardId: z.string().describe('The board ID') },
   }, async ({ boardId }) => {
-    const board = await api.getFile(boardId)
-    return text(board.markdown)
+    try {
+      const board = await api.getFile(boardId)
+      return text(board.markdown)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('create_board', {
@@ -48,8 +65,12 @@ export function registerTools(server: McpServer) {
       projectId: z.string().optional().describe('Project ID to add the board to (optional)'),
     },
   }, async ({ name, markdown, projectId }) => {
-    const board = await api.createFile(name, markdown, projectId)
-    return json(board)
+    try {
+      const board = await api.createFile(name, markdown, projectId)
+      return json(board)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('delete_board', {
@@ -59,8 +80,12 @@ export function registerTools(server: McpServer) {
       boardId: z.string().describe('The board ID to delete'),
     },
   }, async ({ boardId }) => {
-    await api.deleteFile(boardId)
-    return text('Board deleted')
+    try {
+      await api.deleteFile(boardId)
+      return text('Board deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('rename_board', {
@@ -71,8 +96,12 @@ export function registerTools(server: McpServer) {
       name: z.string().describe('New name for the board'),
     },
   }, async ({ boardId, name }) => {
-    const result = await api.updateFile(boardId, { name })
-    return json(result)
+    try {
+      const result = await api.updateFile(boardId, { name })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   // ─── Task Tools ──────────────────────────────────────────────────
@@ -87,9 +116,13 @@ export function registerTools(server: McpServer) {
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
   }, async ({ boardId, columnId, content, agentName }) => {
-    const finalContent = agentName ? `${content} built-by:${agentName}` : content
-    const result = await api.addTask(boardId, columnId, finalContent)
-    return json(result)
+    try {
+      const finalContent = agentName ? `${content} built-by:${agentName}` : content
+      const result = await api.addTask(boardId, columnId, finalContent)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('update_task', {
@@ -102,15 +135,19 @@ export function registerTools(server: McpServer) {
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
   }, async ({ boardId, taskId, content, agentName }) => {
-    let finalContent = content
-    if (agentName && finalContent) {
-      finalContent = finalContent.replace(/\s*built-by:[\w-]+/gi, '') + ` built-by:${agentName}`
+    try {
+      let finalContent = content
+      if (agentName && finalContent) {
+        finalContent = finalContent.replace(/\s*built-by:[\w-]+/gi, '') + ` built-by:${agentName}`
+      }
+      const result = await api.updateTask(boardId, taskId, {
+        action: 'updateContent',
+        content: finalContent,
+      })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
     }
-    const result = await api.updateTask(boardId, taskId, {
-      action: 'updateContent',
-      content: finalContent,
-    })
-    return json(result)
   })
 
   server.registerTool('toggle_task', {
@@ -121,8 +158,12 @@ export function registerTools(server: McpServer) {
       taskId: z.string().describe('The task ID'),
     },
   }, async ({ boardId, taskId }) => {
-    const result = await api.updateTask(boardId, taskId, { action: 'toggle' })
-    return json(result)
+    try {
+      const result = await api.updateTask(boardId, taskId, { action: 'toggle' })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('move_task', {
@@ -135,12 +176,16 @@ export function registerTools(server: McpServer) {
       targetIndex: z.number().describe('Position in the target column (0-based)'),
     },
   }, async ({ boardId, taskId, targetColumnId, targetIndex }) => {
-    const result = await api.updateTask(boardId, taskId, {
-      action: 'move',
-      targetColumnId,
-      targetIndex,
-    })
-    return json(result)
+    try {
+      const result = await api.updateTask(boardId, taskId, {
+        action: 'move',
+        targetColumnId,
+        targetIndex,
+      })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('delete_task', {
@@ -151,8 +196,12 @@ export function registerTools(server: McpServer) {
       taskId: z.string().describe('The task ID'),
     },
   }, async ({ boardId, taskId }) => {
-    await api.deleteTask(boardId, taskId)
-    return text('Task deleted')
+    try {
+      await api.deleteTask(boardId, taskId)
+      return text('Task deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   // ─── Column Tools ────────────────────────────────────────────────
@@ -165,11 +214,15 @@ export function registerTools(server: McpServer) {
       title: z.string().describe('Column title'),
     },
   }, async ({ boardId, title }) => {
-    // We need to get the board, add a column to the markdown, and update
-    const board = await api.getFile(boardId)
-    const newMarkdown = board.markdown.trimEnd() + `\n\n## ${title}\n\n`
-    const result = await api.updateFile(boardId, { markdown: newMarkdown })
-    return json(result)
+    try {
+      // We need to get the board, add a column to the markdown, and update
+      const board = await api.getFile(boardId)
+      const newMarkdown = board.markdown.trimEnd() + `\n\n## ${title}\n\n`
+      const result = await api.updateFile(boardId, { markdown: newMarkdown })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('rename_column', {
@@ -181,8 +234,12 @@ export function registerTools(server: McpServer) {
       title: z.string().describe('New title for the column'),
     },
   }, async ({ boardId, columnId, title }) => {
-    const result = await api.renameColumn(boardId, columnId, title)
-    return json(result)
+    try {
+      const result = await api.renameColumn(boardId, columnId, title)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('delete_column', {
@@ -193,8 +250,12 @@ export function registerTools(server: McpServer) {
       columnId: z.string().describe('The column ID to delete'),
     },
   }, async ({ boardId, columnId }) => {
-    await api.deleteColumn(boardId, columnId)
-    return text('Column deleted')
+    try {
+      await api.deleteColumn(boardId, columnId)
+      return text('Column deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   // ─── Metadata Tools ──────────────────────────────────────────────
@@ -213,27 +274,31 @@ export function registerTools(server: McpServer) {
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
   }, async ({ boardId, taskId, priority, assignees, labels, dueDate, estimate, agentName }) => {
-    const board = await api.getFile(boardId)
-    const task = board.columns
-      .flatMap((c: { tasks: Array<{ id: string; displayContent: string; metadata: Record<string, unknown> }> }) => c.tasks)
-      .find((t: { id: string }) => t.id === taskId)
+    try {
+      const board = await api.getFile(boardId)
+      const task = board.columns
+        .flatMap((c: { tasks: Array<{ id: string; displayContent: string; metadata: Record<string, unknown> }> }) => c.tasks)
+        .find((t: { id: string }) => t.id === taskId)
 
-    if (!task) return text('Task not found')
+      if (!task) return text('Task not found')
 
-    const metadata = { ...task.metadata }
-    if (priority !== undefined) metadata.priority = priority
-    if (assignees !== undefined) metadata.assignees = assignees
-    if (labels !== undefined) metadata.labels = labels
-    if (dueDate !== undefined) metadata.dueDate = dueDate
-    if (estimate !== undefined) metadata.estimate = estimate
-    if (agentName) metadata.builtBy = agentName
+      const metadata = { ...task.metadata }
+      if (priority !== undefined) metadata.priority = priority
+      if (assignees !== undefined) metadata.assignees = assignees
+      if (labels !== undefined) metadata.labels = labels
+      if (dueDate !== undefined) metadata.dueDate = dueDate
+      if (estimate !== undefined) metadata.estimate = estimate
+      if (agentName) metadata.builtBy = agentName
 
-    const result = await api.updateTask(boardId, taskId, {
-      action: 'updateMetadata',
-      displayContent: task.displayContent,
-      metadata,
-    })
-    return json(result)
+      const result = await api.updateTask(boardId, taskId, {
+        action: 'updateMetadata',
+        displayContent: task.displayContent,
+        metadata,
+      })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   // ─── Bulk Tools ───────────────────────────────────────────────────
@@ -302,41 +367,50 @@ export function registerTools(server: McpServer) {
       checked: z.boolean().optional().describe('Filter by completion status'),
     },
   }, async ({ query, assignee, label, checked }) => {
-    const boards = await api.listFiles()
-    const results: Array<{
-      boardId: string
-      boardName: string
-      taskId: string
-      content: string
-      column: string
-      checked: boolean
-    }> = []
+    try {
+      const boards = await api.listFiles()
+      const results: Array<{
+        boardId: string
+        boardName: string
+        taskId: string
+        content: string
+        column: string
+        checked: boolean
+      }> = []
 
-    for (const boardSummary of boards) {
-      const board = await api.getFile(boardSummary.id)
-      for (const column of board.columns) {
-        for (const task of column.tasks) {
-          let match = true
-          if (query && !task.content.toLowerCase().includes(query.toLowerCase())) match = false
-          if (assignee && !task.metadata.assignees.includes(assignee)) match = false
-          if (label && !task.metadata.labels.includes(label)) match = false
-          if (checked !== undefined && task.checked !== checked) match = false
+      for (const boardSummary of boards) {
+        try {
+          const board = await api.getFile(boardSummary.id)
+          for (const column of board.columns) {
+            for (const task of column.tasks) {
+              let match = true
+              if (query && !task.content.toLowerCase().includes(query.toLowerCase())) match = false
+              if (assignee && !task.metadata.assignees.includes(assignee)) match = false
+              if (label && !task.metadata.labels.includes(label)) match = false
+              if (checked !== undefined && task.checked !== checked) match = false
 
-          if (match) {
-            results.push({
-              boardId: boardSummary.id,
-              boardName: boardSummary.name,
-              taskId: task.id,
-              content: task.content,
-              column: column.title,
-              checked: task.checked,
-            })
+              if (match) {
+                results.push({
+                  boardId: boardSummary.id,
+                  boardName: boardSummary.name,
+                  taskId: task.id,
+                  content: task.content,
+                  column: column.title,
+                  checked: task.checked,
+                })
+              }
+            }
           }
+        } catch (err) {
+          // Skip boards that fail to load, continue searching others
+          console.error(`[mcp] Failed to search board ${boardSummary.id}:`, err)
         }
       }
-    }
 
-    return json({ count: results.length, results })
+      return json({ count: results.length, results })
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   // ─── Project Tools ───────────────────────────────────────────────
@@ -345,8 +419,12 @@ export function registerTools(server: McpServer) {
     title: 'List Projects',
     description: 'List all projects',
   }, async () => {
-    const projects = await api.listProjects()
-    return json(projects)
+    try {
+      const projects = await api.listProjects()
+      return json(projects)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 
   server.registerTool('get_project_boards', {
@@ -356,10 +434,14 @@ export function registerTools(server: McpServer) {
       projectId: z.string().describe('The project ID'),
     },
   }, async ({ projectId }) => {
-    const allBoards = await api.listFiles()
-    const projectBoards = allBoards.filter(
-      (b: { projectId: string | null }) => b.projectId === projectId
-    )
-    return json(projectBoards)
+    try {
+      const allBoards = await api.listFiles()
+      const projectBoards = allBoards.filter(
+        (b: { projectId: string | null }) => b.projectId === projectId,
+      )
+      return json(projectBoards)
+    } catch (err) {
+      return errorResponse(err)
+    }
   })
 }
