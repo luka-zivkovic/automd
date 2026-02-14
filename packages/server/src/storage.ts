@@ -3,10 +3,18 @@ import path from 'node:path'
 import os from 'node:os'
 import type { BoardFile, Project } from '@automd/shared'
 import { DEFAULT_MARKDOWN } from '@automd/shared'
+import { isWithinDirectory } from './validation.js'
 
 const AUTOMD_DIR = path.join(os.homedir(), '.automd')
 const BOARDS_DIR = path.join(AUTOMD_DIR, 'boards')
 const MANIFEST_PATH = path.join(AUTOMD_DIR, 'manifest.json')
+
+export class StorageError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message)
+    this.name = 'StorageError'
+  }
+}
 
 interface Manifest {
   files: Array<{
@@ -30,12 +38,39 @@ function readManifest(): Manifest {
   if (!fs.existsSync(MANIFEST_PATH)) {
     return { files: [], projects: [] }
   }
-  return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf-8'))
+  try {
+    const raw = fs.readFileSync(MANIFEST_PATH, 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed.files)) parsed.files = []
+    if (!Array.isArray(parsed.projects)) parsed.projects = []
+    return parsed as Manifest
+  } catch (err) {
+    console.error('[storage] Failed to read manifest.json, resetting:', err)
+    try {
+      const backupPath = MANIFEST_PATH + `.corrupt.${Date.now()}`
+      fs.renameSync(MANIFEST_PATH, backupPath)
+      console.error(`[storage] Corrupted manifest backed up to: ${backupPath}`)
+    } catch {
+      /* ignore backup failure */
+    }
+    return { files: [], projects: [] }
+  }
 }
 
 function writeManifest(manifest: Manifest) {
   ensureDirs()
-  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2), 'utf-8')
+  const tmpPath = MANIFEST_PATH + '.tmp'
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(manifest, null, 2), 'utf-8')
+    fs.renameSync(tmpPath, MANIFEST_PATH)
+  } catch (err) {
+    try {
+      fs.unlinkSync(tmpPath)
+    } catch {
+      /* ignore */
+    }
+    throw new StorageError('Failed to save manifest', err)
+  }
 }
 
 function filenameSafe(name: string): string {
@@ -52,43 +87,72 @@ function uniqueFilename(name: string, existingFilenames: string[]): string {
   return filename
 }
 
+/** Resolve a board filename and verify it's within the boards directory */
+function safeBoardPath(filename: string): string {
+  const mdPath = path.join(BOARDS_DIR, filename)
+  if (!isWithinDirectory(mdPath, BOARDS_DIR)) {
+    throw new StorageError(`Invalid board filename: ${filename}`)
+  }
+  return mdPath
+}
+
 // ─── File Operations ─────────────────────────────────────────────────
 
 export function listFiles(): BoardFile[] {
-  const manifest = readManifest()
-  return manifest.files.map((f) => {
-    const mdPath = path.join(BOARDS_DIR, f.filename)
-    const markdown = fs.existsSync(mdPath)
-      ? fs.readFileSync(mdPath, 'utf-8')
-      : ''
-    return {
-      id: f.id,
-      name: f.name,
-      markdown,
-      createdAt: f.createdAt,
-      updatedAt: f.updatedAt,
-      projectId: f.projectId,
-    }
-  })
+  try {
+    const manifest = readManifest()
+    return manifest.files.map((f) => {
+      const mdPath = safeBoardPath(f.filename)
+      let markdown = ''
+      try {
+        if (fs.existsSync(mdPath)) {
+          markdown = fs.readFileSync(mdPath, 'utf-8')
+        }
+      } catch (err) {
+        console.error(`[storage] Failed to read board file ${f.filename}:`, err)
+      }
+      return {
+        id: f.id,
+        name: f.name,
+        markdown,
+        createdAt: f.createdAt,
+        updatedAt: f.updatedAt,
+        projectId: f.projectId,
+      }
+    })
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError('Failed to list files', err)
+  }
 }
 
 export function getFile(id: string): BoardFile | null {
-  const manifest = readManifest()
-  const entry = manifest.files.find((f) => f.id === id)
-  if (!entry) return null
+  try {
+    const manifest = readManifest()
+    const entry = manifest.files.find((f) => f.id === id)
+    if (!entry) return null
 
-  const mdPath = path.join(BOARDS_DIR, entry.filename)
-  const markdown = fs.existsSync(mdPath)
-    ? fs.readFileSync(mdPath, 'utf-8')
-    : ''
+    const mdPath = safeBoardPath(entry.filename)
+    let markdown = ''
+    try {
+      if (fs.existsSync(mdPath)) {
+        markdown = fs.readFileSync(mdPath, 'utf-8')
+      }
+    } catch (err) {
+      console.error(`[storage] Failed to read board file ${entry.filename}:`, err)
+    }
 
-  return {
-    id: entry.id,
-    name: entry.name,
-    markdown,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt,
-    projectId: entry.projectId,
+    return {
+      id: entry.id,
+      name: entry.name,
+      markdown,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      projectId: entry.projectId,
+    }
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to get file ${id}`, err)
   }
 }
 
@@ -96,174 +160,224 @@ export function createFile(
   id: string,
   name: string,
   markdown?: string,
-  projectId?: string | null
+  projectId?: string | null,
 ): BoardFile {
-  const manifest = readManifest()
-  const existingFilenames = manifest.files.map((f) => f.filename)
-  const filename = uniqueFilename(name, existingFilenames)
-  const now = Date.now()
-  const content = markdown ?? DEFAULT_MARKDOWN
+  try {
+    const manifest = readManifest()
+    const existingFilenames = manifest.files.map((f) => f.filename)
+    const filename = uniqueFilename(name, existingFilenames)
+    const now = Date.now()
+    const content = markdown ?? DEFAULT_MARKDOWN
 
-  ensureDirs()
-  fs.writeFileSync(path.join(BOARDS_DIR, filename), content, 'utf-8')
+    const mdPath = safeBoardPath(filename)
+    ensureDirs()
+    fs.writeFileSync(mdPath, content, 'utf-8')
 
-  const entry = {
-    id,
-    name,
-    filename,
-    projectId: projectId ?? null,
-    createdAt: now,
-    updatedAt: now,
-  }
-  manifest.files.push(entry)
-  writeManifest(manifest)
+    const entry = {
+      id,
+      name,
+      filename,
+      projectId: projectId ?? null,
+      createdAt: now,
+      updatedAt: now,
+    }
+    manifest.files.push(entry)
+    writeManifest(manifest)
 
-  return {
-    id,
-    name,
-    markdown: content,
-    createdAt: now,
-    updatedAt: now,
-    projectId: projectId ?? null,
+    return {
+      id,
+      name,
+      markdown: content,
+      createdAt: now,
+      updatedAt: now,
+      projectId: projectId ?? null,
+    }
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to create file ${name}`, err)
   }
 }
 
 export function updateFileMarkdown(id: string, markdown: string): BoardFile | null {
-  const manifest = readManifest()
-  const entry = manifest.files.find((f) => f.id === id)
-  if (!entry) return null
+  try {
+    const manifest = readManifest()
+    const entry = manifest.files.find((f) => f.id === id)
+    if (!entry) return null
 
-  entry.updatedAt = Date.now()
-  writeManifest(manifest)
+    entry.updatedAt = Date.now()
+    writeManifest(manifest)
 
-  const mdPath = path.join(BOARDS_DIR, entry.filename)
-  fs.writeFileSync(mdPath, markdown, 'utf-8')
+    const mdPath = safeBoardPath(entry.filename)
+    fs.writeFileSync(mdPath, markdown, 'utf-8')
 
-  return {
-    id: entry.id,
-    name: entry.name,
-    markdown,
-    createdAt: entry.createdAt,
-    updatedAt: entry.updatedAt,
-    projectId: entry.projectId,
+    return {
+      id: entry.id,
+      name: entry.name,
+      markdown,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      projectId: entry.projectId,
+    }
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to update file ${id}`, err)
   }
 }
 
 export function renameFile(id: string, name: string): BoardFile | null {
-  const manifest = readManifest()
-  const entry = manifest.files.find((f) => f.id === id)
-  if (!entry) return null
+  try {
+    const manifest = readManifest()
+    const entry = manifest.files.find((f) => f.id === id)
+    if (!entry) return null
 
-  entry.name = name
-  entry.updatedAt = Date.now()
-  writeManifest(manifest)
+    entry.name = name
+    entry.updatedAt = Date.now()
+    writeManifest(manifest)
 
-  return getFile(id)
+    return getFile(id)
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to rename file ${id}`, err)
+  }
 }
 
 export function deleteFile(id: string): boolean {
-  const manifest = readManifest()
-  const idx = manifest.files.findIndex((f) => f.id === id)
-  if (idx === -1) return false
+  try {
+    const manifest = readManifest()
+    const idx = manifest.files.findIndex((f) => f.id === id)
+    if (idx === -1) return false
 
-  const entry = manifest.files[idx]
-  const mdPath = path.join(BOARDS_DIR, entry.filename)
-  if (fs.existsSync(mdPath)) fs.unlinkSync(mdPath)
+    const entry = manifest.files[idx]
+    const mdPath = safeBoardPath(entry.filename)
+    try {
+      if (fs.existsSync(mdPath)) fs.unlinkSync(mdPath)
+    } catch (err) {
+      console.error(`[storage] Failed to delete board file ${entry.filename}:`, err)
+    }
 
-  manifest.files.splice(idx, 1)
+    manifest.files.splice(idx, 1)
 
-  // Remove from any projects
-  for (const project of manifest.projects) {
-    project.fileIds = project.fileIds.filter((fid) => fid !== id)
+    // Remove from any projects
+    for (const project of manifest.projects) {
+      project.fileIds = project.fileIds.filter((fid) => fid !== id)
+    }
+
+    writeManifest(manifest)
+    return true
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to delete file ${id}`, err)
   }
-
-  writeManifest(manifest)
-  return true
 }
 
 // ─── Project Operations ──────────────────────────────────────────────
 
 export function listProjects(): Project[] {
-  return readManifest().projects
+  try {
+    return readManifest().projects
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError('Failed to list projects', err)
+  }
 }
 
 export function createProject(
   id: string,
   name: string,
-  color: string
+  color: string,
 ): Project {
-  const manifest = readManifest()
-  const project: Project = {
-    id,
-    name,
-    color,
-    fileIds: [],
-    createdAt: Date.now(),
+  try {
+    const manifest = readManifest()
+    const project: Project = {
+      id,
+      name,
+      color,
+      fileIds: [],
+      createdAt: Date.now(),
+    }
+    manifest.projects.push(project)
+    writeManifest(manifest)
+    return project
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to create project ${name}`, err)
   }
-  manifest.projects.push(project)
-  writeManifest(manifest)
-  return project
 }
 
 export function updateProject(
   id: string,
-  updates: Partial<Pick<Project, 'name' | 'color' | 'fileIds'>>
+  updates: Partial<Pick<Project, 'name' | 'color' | 'fileIds'>>,
 ): Project | null {
-  const manifest = readManifest()
-  const project = manifest.projects.find((p) => p.id === id)
-  if (!project) return null
+  try {
+    const manifest = readManifest()
+    const project = manifest.projects.find((p) => p.id === id)
+    if (!project) return null
 
-  if (updates.name !== undefined) project.name = updates.name
-  if (updates.color !== undefined) project.color = updates.color
-  if (updates.fileIds !== undefined) project.fileIds = updates.fileIds
+    if (updates.name !== undefined) project.name = updates.name
+    if (updates.color !== undefined) project.color = updates.color
+    if (updates.fileIds !== undefined) project.fileIds = updates.fileIds
 
-  writeManifest(manifest)
-  return project
+    writeManifest(manifest)
+    return project
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to update project ${id}`, err)
+  }
 }
 
 export function deleteProject(id: string): boolean {
-  const manifest = readManifest()
-  const idx = manifest.projects.findIndex((p) => p.id === id)
-  if (idx === -1) return false
+  try {
+    const manifest = readManifest()
+    const idx = manifest.projects.findIndex((p) => p.id === id)
+    if (idx === -1) return false
 
-  // Unlink files from this project
-  for (const file of manifest.files) {
-    if (file.projectId === id) file.projectId = null
+    // Unlink files from this project
+    for (const file of manifest.files) {
+      if (file.projectId === id) file.projectId = null
+    }
+
+    manifest.projects.splice(idx, 1)
+    writeManifest(manifest)
+    return true
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to delete project ${id}`, err)
   }
-
-  manifest.projects.splice(idx, 1)
-  writeManifest(manifest)
-  return true
 }
 
 export function moveFileToProject(
   fileId: string,
-  projectId: string | null
+  projectId: string | null,
 ): boolean {
-  const manifest = readManifest()
-  const file = manifest.files.find((f) => f.id === fileId)
-  if (!file) return false
+  try {
+    const manifest = readManifest()
+    const file = manifest.files.find((f) => f.id === fileId)
+    if (!file) return false
 
-  // Remove from old project's fileIds
-  if (file.projectId) {
-    const oldProject = manifest.projects.find((p) => p.id === file.projectId)
-    if (oldProject) {
-      oldProject.fileIds = oldProject.fileIds.filter((fid) => fid !== fileId)
+    // Remove from old project's fileIds
+    if (file.projectId) {
+      const oldProject = manifest.projects.find((p) => p.id === file.projectId)
+      if (oldProject) {
+        oldProject.fileIds = oldProject.fileIds.filter((fid) => fid !== fileId)
+      }
     }
-  }
 
-  file.projectId = projectId
+    file.projectId = projectId
 
-  // Add to new project's fileIds
-  if (projectId) {
-    const newProject = manifest.projects.find((p) => p.id === projectId)
-    if (newProject && !newProject.fileIds.includes(fileId)) {
-      newProject.fileIds.push(fileId)
+    // Add to new project's fileIds
+    if (projectId) {
+      const newProject = manifest.projects.find((p) => p.id === projectId)
+      if (newProject && !newProject.fileIds.includes(fileId)) {
+        newProject.fileIds.push(fileId)
+      }
     }
-  }
 
-  writeManifest(manifest)
-  return true
+    writeManifest(manifest)
+    return true
+  } catch (err) {
+    if (err instanceof StorageError) throw err
+    throw new StorageError(`Failed to move file ${fileId} to project ${projectId}`, err)
+  }
 }
 
 export function getStoragePath(): string {
