@@ -73,6 +73,37 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  server.registerTool('delete_board', {
+    title: 'Delete Board',
+    description: 'Permanently delete a board and all its tasks',
+    inputSchema: {
+      boardId: z.string().describe('The board ID to delete'),
+    },
+  }, async ({ boardId }) => {
+    try {
+      await api.deleteFile(boardId)
+      return text('Board deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('rename_board', {
+    title: 'Rename Board',
+    description: 'Rename an existing board',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      name: z.string().describe('New name for the board'),
+    },
+  }, async ({ boardId, name }) => {
+    try {
+      const result = await api.updateFile(boardId, { name })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   // ─── Task Tools ──────────────────────────────────────────────────
 
   server.registerTool('add_task', {
@@ -82,10 +113,12 @@ export function registerTools(server: McpServer) {
       boardId: z.string().describe('The board ID'),
       columnId: z.string().describe('The column/heading ID to add the task to'),
       content: z.string().describe('Task content with optional inline metadata'),
+      agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
-  }, async ({ boardId, columnId, content }) => {
+  }, async ({ boardId, columnId, content, agentName }) => {
     try {
-      const result = await api.addTask(boardId, columnId, content)
+      const finalContent = agentName ? `${content} built-by:${agentName}` : content
+      const result = await api.addTask(boardId, columnId, finalContent)
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -94,17 +127,22 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('update_task', {
     title: 'Update Task',
-    description: 'Update a task\'s content or metadata',
+    description: 'Update a task\'s content',
     inputSchema: {
       boardId: z.string().describe('The board ID'),
       taskId: z.string().describe('The task ID'),
       content: z.string().optional().describe('New task content'),
+      agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
-  }, async ({ boardId, taskId, content }) => {
+  }, async ({ boardId, taskId, content, agentName }) => {
     try {
+      let finalContent = content
+      if (agentName && finalContent) {
+        finalContent = finalContent.replace(/\s*built-by:[\w-]+/gi, '') + ` built-by:${agentName}`
+      }
       const result = await api.updateTask(boardId, taskId, {
         action: 'updateContent',
-        content,
+        content: finalContent,
       })
       return json(result)
     } catch (err) {
@@ -185,6 +223,136 @@ export function registerTools(server: McpServer) {
     } catch (err) {
       return errorResponse(err)
     }
+  })
+
+  server.registerTool('rename_column', {
+    title: 'Rename Column',
+    description: 'Rename a column/heading on a board',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      columnId: z.string().describe('The column ID to rename'),
+      title: z.string().describe('New title for the column'),
+    },
+  }, async ({ boardId, columnId, title }) => {
+    try {
+      const result = await api.renameColumn(boardId, columnId, title)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('delete_column', {
+    title: 'Delete Column',
+    description: 'Delete a column and all its tasks from a board',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      columnId: z.string().describe('The column ID to delete'),
+    },
+  }, async ({ boardId, columnId }) => {
+    try {
+      await api.deleteColumn(boardId, columnId)
+      return text('Column deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  // ─── Metadata Tools ──────────────────────────────────────────────
+
+  server.registerTool('update_task_metadata', {
+    title: 'Update Task Metadata',
+    description: 'Update a task\'s metadata (priority, assignees, labels, due date, estimate) without rewriting its content',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      taskId: z.string().describe('The task ID'),
+      priority: z.enum(['high', 'medium', 'low']).nullable().optional().describe('Task priority'),
+      assignees: z.array(z.string()).optional().describe('List of assignees (without @)'),
+      labels: z.array(z.string()).optional().describe('List of labels (without #)'),
+      dueDate: z.string().nullable().optional().describe('Due date in YYYY-MM-DD format'),
+      estimate: z.number().nullable().optional().describe('Time estimate in hours'),
+      agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
+    },
+  }, async ({ boardId, taskId, priority, assignees, labels, dueDate, estimate, agentName }) => {
+    try {
+      const board = await api.getFile(boardId)
+      const task = board.columns
+        .flatMap((c: { tasks: Array<{ id: string; displayContent: string; metadata: Record<string, unknown> }> }) => c.tasks)
+        .find((t: { id: string }) => t.id === taskId)
+
+      if (!task) return text('Task not found')
+
+      const metadata = { ...task.metadata }
+      if (priority !== undefined) metadata.priority = priority
+      if (assignees !== undefined) metadata.assignees = assignees
+      if (labels !== undefined) metadata.labels = labels
+      if (dueDate !== undefined) metadata.dueDate = dueDate
+      if (estimate !== undefined) metadata.estimate = estimate
+      if (agentName) metadata.builtBy = agentName
+
+      const result = await api.updateTask(boardId, taskId, {
+        action: 'updateMetadata',
+        displayContent: task.displayContent,
+        metadata,
+      })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  // ─── Bulk Tools ───────────────────────────────────────────────────
+
+  server.registerTool('bulk_update_tasks', {
+    title: 'Bulk Update Tasks',
+    description: 'Update multiple tasks at once. Each update can toggle, move, update content, or update metadata.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making these changes (tagged as built-by)'),
+      updates: z.array(z.object({
+        taskId: z.string().describe('The task ID'),
+        action: z.enum(['toggle', 'move', 'updateContent', 'updateMetadata']).describe('The action to perform'),
+        content: z.string().optional().describe('New content (for updateContent)'),
+        targetColumnId: z.string().optional().describe('Target column (for move)'),
+        targetIndex: z.number().optional().describe('Target index (for move)'),
+        displayContent: z.string().optional().describe('Display content (for updateMetadata)'),
+        metadata: z.record(z.string(), z.unknown()).optional().describe('Metadata fields (for updateMetadata)'),
+      })).describe('Array of task updates to apply'),
+    },
+  }, async ({ boardId, agentName, updates }) => {
+    const results: Array<{ taskId: string; ok: boolean; error?: string }> = []
+
+    for (const update of updates) {
+      try {
+        const { taskId, ...data } = update
+
+        // Inject agentName for content/metadata updates
+        if (agentName) {
+          if (data.action === 'updateContent' && data.content) {
+            data.content = data.content.replace(/\s*built-by:[\w-]+/gi, '') + ` built-by:${agentName}`
+          }
+          if (data.action === 'updateMetadata' && data.metadata) {
+            data.metadata = { ...data.metadata, builtBy: agentName }
+          }
+        }
+
+        await api.updateTask(boardId, taskId, data)
+        results.push({ taskId, ok: true })
+      } catch (err) {
+        results.push({
+          taskId: update.taskId,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    return json({
+      total: updates.length,
+      succeeded: results.filter(r => r.ok).length,
+      failed: results.filter(r => !r.ok).length,
+      results,
+    })
   })
 
   // ─── Search Tools ────────────────────────────────────────────────

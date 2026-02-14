@@ -130,6 +130,15 @@ export const api = {
   deleteTask: (fileId: string, taskId: string) =>
     request(`/api/files/${fileId}/tasks/${taskId}`, { method: 'DELETE' }),
 
+  // Columns
+  renameColumn: (fileId: string, columnId: string, title: string) =>
+    request(`/api/files/${fileId}/columns/${columnId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'rename', title }),
+    }),
+  deleteColumn: (fileId: string, columnId: string) =>
+    request(`/api/files/${fileId}/columns/${columnId}`, { method: 'DELETE' }),
+
   // Projects
   listProjects: () => request('/api/projects'),
   createProject: (name: string, color?: string) =>

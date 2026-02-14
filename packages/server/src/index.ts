@@ -3,6 +3,7 @@ import cors from 'cors'
 import { createServer } from 'node:http'
 import { filesRouter } from './routes/files.js'
 import { tasksRouter } from './routes/tasks.js'
+import { columnsRouter } from './routes/columns.js'
 import { projectsRouter } from './routes/projects.js'
 import { setupWebSocket } from './ws.js'
 import { getStoragePath, StorageError } from './storage.js'
@@ -16,6 +17,7 @@ app.use(express.json({ limit: '5mb' }))
 // Routes
 app.use('/api/files', filesRouter)
 app.use('/api/files/:fileId/tasks', tasksRouter)
+app.use('/api/files/:fileId/columns', columnsRouter)
 app.use('/api/projects', projectsRouter)
 
 // Health check
