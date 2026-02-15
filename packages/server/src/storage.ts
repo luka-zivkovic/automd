@@ -5,9 +5,16 @@ import type { BoardFile, Project } from '@automd/shared'
 import { DEFAULT_MARKDOWN } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
 
-const AUTOMD_DIR = path.join(os.homedir(), '.automd')
-const BOARDS_DIR = path.join(AUTOMD_DIR, 'boards')
-const MANIFEST_PATH = path.join(AUTOMD_DIR, 'manifest.json')
+// Lazy-evaluated paths to support AUTOMD_STORAGE_DIR override (used in tests)
+function getAutomdDir() {
+  return process.env.AUTOMD_STORAGE_DIR ?? path.join(os.homedir(), '.automd')
+}
+function getBoardsDir() {
+  return path.join(getAutomdDir(), 'boards')
+}
+function getManifestPath() {
+  return path.join(getAutomdDir(), 'manifest.json')
+}
 
 export class StorageError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -29,17 +36,20 @@ interface Manifest {
 }
 
 function ensureDirs() {
-  if (!fs.existsSync(AUTOMD_DIR)) fs.mkdirSync(AUTOMD_DIR, { recursive: true })
-  if (!fs.existsSync(BOARDS_DIR)) fs.mkdirSync(BOARDS_DIR, { recursive: true })
+  const automdDir = getAutomdDir()
+  const boardsDir = getBoardsDir()
+  if (!fs.existsSync(automdDir)) fs.mkdirSync(automdDir, { recursive: true })
+  if (!fs.existsSync(boardsDir)) fs.mkdirSync(boardsDir, { recursive: true })
 }
 
 function readManifest(): Manifest {
   ensureDirs()
-  if (!fs.existsSync(MANIFEST_PATH)) {
+  const manifestPath = getManifestPath()
+  if (!fs.existsSync(manifestPath)) {
     return { files: [], projects: [] }
   }
   try {
-    const raw = fs.readFileSync(MANIFEST_PATH, 'utf-8')
+    const raw = fs.readFileSync(manifestPath, 'utf-8')
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed.files)) parsed.files = []
     if (!Array.isArray(parsed.projects)) parsed.projects = []
@@ -47,8 +57,8 @@ function readManifest(): Manifest {
   } catch (err) {
     console.error('[storage] Failed to read manifest.json, resetting:', err)
     try {
-      const backupPath = MANIFEST_PATH + `.corrupt.${Date.now()}`
-      fs.renameSync(MANIFEST_PATH, backupPath)
+      const backupPath = manifestPath + `.corrupt.${Date.now()}`
+      fs.renameSync(manifestPath, backupPath)
       console.error(`[storage] Corrupted manifest backed up to: ${backupPath}`)
     } catch {
       /* ignore backup failure */
@@ -59,10 +69,11 @@ function readManifest(): Manifest {
 
 function writeManifest(manifest: Manifest) {
   ensureDirs()
-  const tmpPath = MANIFEST_PATH + '.tmp'
+  const manifestPath = getManifestPath()
+  const tmpPath = manifestPath + '.tmp'
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(manifest, null, 2), 'utf-8')
-    fs.renameSync(tmpPath, MANIFEST_PATH)
+    fs.renameSync(tmpPath, manifestPath)
   } catch (err) {
     try {
       fs.unlinkSync(tmpPath)
@@ -89,8 +100,9 @@ function uniqueFilename(name: string, existingFilenames: string[]): string {
 
 /** Resolve a board filename and verify it's within the boards directory */
 function safeBoardPath(filename: string): string {
-  const mdPath = path.join(BOARDS_DIR, filename)
-  if (!isWithinDirectory(mdPath, BOARDS_DIR)) {
+  const boardsDir = getBoardsDir()
+  const mdPath = path.join(boardsDir, filename)
+  if (!isWithinDirectory(mdPath, boardsDir)) {
     throw new StorageError(`Invalid board filename: ${filename}`)
   }
   return mdPath
@@ -381,5 +393,5 @@ export function moveFileToProject(
 }
 
 export function getStoragePath(): string {
-  return AUTOMD_DIR
+  return getAutomdDir()
 }

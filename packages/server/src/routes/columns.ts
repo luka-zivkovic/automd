@@ -1,24 +1,16 @@
 import { Router, type Request } from 'express'
 import {
-  parseMarkdown,
   serializeAst,
-  annotateIds,
-  createIdCache,
   renameColumn,
   deleteColumn,
 } from '@automd/shared'
 import * as storage from '../storage.js'
 import { broadcast } from '../ws.js'
+import { parseBoard } from '../board-cache.js'
 
 type ColumnParams = { fileId: string; columnId: string }
 
 export const columnsRouter = Router({ mergeParams: true })
-
-function parseBoard(markdown: string) {
-  const cache = createIdCache()
-  const ast = annotateIds(parseMarkdown(markdown), cache)
-  return { ast, cache }
-}
 
 function saveAndBroadcast(fileId: string, markdown: string) {
   const file = storage.updateFileMarkdown(fileId, markdown)
@@ -39,7 +31,7 @@ columnsRouter.patch('/:columnId', (req: Request<ColumnParams>, res) => {
     return
   }
 
-  const { ast } = parseBoard(file.markdown)
+  const { ast } = parseBoard(file.markdown, fileId)
 
   switch (action) {
     case 'rename':
@@ -67,7 +59,7 @@ columnsRouter.delete('/:columnId', (req: Request<ColumnParams>, res) => {
     return
   }
 
-  const { ast } = parseBoard(file.markdown)
+  const { ast } = parseBoard(file.markdown, fileId)
   const newAst = deleteColumn(ast, columnId)
   const markdown = serializeAst(newAst)
   saveAndBroadcast(fileId, markdown)
