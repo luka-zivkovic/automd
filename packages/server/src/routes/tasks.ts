@@ -1,36 +1,25 @@
 import { Router, type Request } from 'express'
 import { nanoid } from 'nanoid'
 import {
-  parseMarkdown,
   serializeAst,
-  annotateIds,
-  createIdCache,
-  extractTasksAndColumns,
   toggleTask,
   moveTask,
   addTask,
   updateTaskContent,
   updateTaskMetadata,
   deleteTask,
-  emptyMetadata,
 } from '@automd/shared'
 import type { TaskMetadata } from '@automd/shared'
 import * as storage from '../storage.js'
 import { broadcast } from '../ws.js'
 import { withWriteLock } from '../write-lock.js'
 import { isValidId } from '../validation.js'
+import { parseBoard } from '../board-cache.js'
 
 type FileParams = { fileId: string }
 type TaskParams = { fileId: string; taskId: string }
 
 export const tasksRouter = Router({ mergeParams: true })
-
-function parseBoard(markdown: string) {
-  const cache = createIdCache()
-  const ast = annotateIds(parseMarkdown(markdown), cache)
-  const extracted = extractTasksAndColumns(ast)
-  return { ast, cache, ...extracted }
-}
 
 function saveAndBroadcast(fileId: string, markdown: string) {
   const file = storage.updateFileMarkdown(fileId, markdown)
@@ -54,7 +43,7 @@ tasksRouter.get('/', (req: Request<FileParams>, res, next) => {
       return
     }
 
-    const { columns, tasks } = parseBoard(file.markdown)
+    const { columns, tasks } = parseBoard(file.markdown, req.params.fileId)
     res.setHeader('ETag', `"${file.updatedAt}"`)
     res.json({ columns, tasks })
   } catch (err) {
@@ -86,7 +75,7 @@ tasksRouter.post('/', async (req: Request<FileParams>, res, next) => {
         return { conflict: true as const, currentVersion: file.updatedAt }
       }
 
-      const { ast } = parseBoard(file.markdown)
+      const { ast } = parseBoard(file.markdown, req.params.fileId)
       const taskId = nanoid(10)
       const newAst = addTask(ast, columnId, content, taskId)
       const markdown = serializeAst(newAst)
@@ -132,7 +121,7 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         return { status: 409 as const, currentVersion: file.updatedAt }
       }
 
-      const { ast } = parseBoard(file.markdown)
+      const { ast } = parseBoard(file.markdown, fileId)
       let newAst = ast
 
       switch (action) {
@@ -198,7 +187,7 @@ tasksRouter.delete('/:taskId', async (req: Request<TaskParams>, res, next) => {
       const file = storage.getFile(fileId)
       if (!file) return { status: 404 as const }
 
-      const { ast } = parseBoard(file.markdown)
+      const { ast } = parseBoard(file.markdown, fileId)
       const newAst = deleteTask(ast, taskId)
       const markdown = serializeAst(newAst)
 
