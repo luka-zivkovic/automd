@@ -17,7 +17,12 @@ export { serializeAst } from './serializer'
 export { createIdCache, annotateIds } from './id-annotator'
 
 // Task Extraction
-export { extractTasksAndColumns } from './task-extractor'
+export {
+  extractTasksAndColumns,
+  detectColumnDepth,
+  detectHeadingStructure,
+} from './task-extractor'
+export type { HeadingStructure } from './task-extractor'
 
 // Metadata
 export { emptyMetadata, parseMetadata } from './metadata-parser'
@@ -32,6 +37,9 @@ export {
   updateTaskMetadata,
   updateTaskDescription,
   deleteTask,
+  addSubtask,
+  toggleSubtask,
+  deleteSubtask,
   addColumn,
   renameColumn,
   deleteColumn,

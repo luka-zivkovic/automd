@@ -15,7 +15,7 @@ describe('Concurrent writes with locking', () => {
 
     const res = await request(app)
       .post('/api/files')
-      .send({ name: 'Concurrency Test', markdown: '## Todo\n\n- [ ] Task 1\n' })
+      .send({ name: 'Concurrency Test', markdown: '# Todo\n\n## [ ] Task 1\n' })
     fileId = res.body.id
   })
 
@@ -80,7 +80,7 @@ describe('Concurrent writes with locking', () => {
     const promises = Array.from({ length: 5 }, (_, i) =>
       request(app)
         .post('/api/files')
-        .send({ name: `Board ${i}`, markdown: '## Todo\n' })
+        .send({ name: `Board ${i}`, markdown: '# Todo\n' })
     )
 
     const results = await Promise.all(promises)

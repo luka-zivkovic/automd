@@ -58,10 +58,10 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('create_board', {
     title: 'Create Board',
-    description: 'Create a new board. Optionally provide initial markdown content.',
+    description: 'Create a new board. Optionally provide initial markdown content. Use # (H1) headings for columns and ## (H2) headings for tasks (e.g. "# Todo\\n\\n## Task 1\\n\\n## [ ] Task 2\\n\\n# Done\\n\\n## [x] Task 3"). Subtasks are GFM checkboxes (- [ ] / - [x]) under task headings.',
     inputSchema: {
       name: z.string().describe('Name for the new board'),
-      markdown: z.string().optional().describe('Initial markdown content (optional)'),
+      markdown: z.string().optional().describe('Initial markdown content. Use # (H1) headings for column names and ## (H2) headings for tasks. Optional checkbox prefix on tasks: ## [ ] or ## [x]. Subtasks use - [ ] / - [x] under task headings'),
       projectId: z.string().optional().describe('Project ID to add the board to (optional)'),
     },
   }, async ({ name, markdown, projectId }) => {
@@ -108,7 +108,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('add_task', {
     title: 'Add Task',
-    description: 'Add a new task to a column. Content supports inline metadata like @user #label priority:high due:2025-03-20 est:4h',
+    description: 'Add a new task (H2 heading) to a column. Content supports inline metadata like @user #label priority:high due:2025-03-20 est:4h',
     inputSchema: {
       boardId: z.string().describe('The board ID'),
       columnId: z.string().describe('The column/heading ID to add the task to'),
@@ -217,7 +217,7 @@ export function registerTools(server: McpServer) {
     try {
       // We need to get the board, add a column to the markdown, and update
       const board = await api.getFile(boardId)
-      const newMarkdown = board.markdown.trimEnd() + `\n\n## ${title}\n\n`
+      const newMarkdown = board.markdown.trimEnd() + `\n\n# ${title}\n\n`
       const result = await api.updateFile(boardId, { markdown: newMarkdown })
       return json(result)
     } catch (err) {
@@ -375,7 +375,7 @@ export function registerTools(server: McpServer) {
         taskId: string
         content: string
         column: string
-        checked: boolean
+        checked: boolean | null
       }> = []
 
       for (const boardSummary of boards) {

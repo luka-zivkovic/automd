@@ -97,10 +97,10 @@ describe('round-trip: parse → serialize → parse', () => {
   it('should handle the DEFAULT_MARKDOWN document', () => {
     const { serialized } = roundTrip(DEFAULT_MARKDOWN)
     // Verify key content is preserved
-    expect(serialized).toContain('## Backlog')
-    expect(serialized).toContain('## In Progress')
-    expect(serialized).toContain('## In Review')
-    expect(serialized).toContain('## Done')
+    expect(serialized).toContain('# Backlog')
+    expect(serialized).toContain('# In Progress')
+    expect(serialized).toContain('# In Review')
+    expect(serialized).toContain('# Done')
     // Idempotency
     const serialized2 = serializeAst(parseMarkdown(serialized))
     expect(serialized2).toBe(serialized)

@@ -27,7 +27,7 @@ describe('Files API', () => {
 
   it('should list created boards', async () => {
     await request(app).post('/api/files').send({ name: 'Board 1', markdown: SAMPLE_MARKDOWN })
-    await request(app).post('/api/files').send({ name: 'Board 2', markdown: '## Todo\n' })
+    await request(app).post('/api/files').send({ name: 'Board 2', markdown: '# Todo\n' })
 
     const res = await request(app).get('/api/files')
     expect(res.status).toBe(200)
@@ -62,7 +62,7 @@ describe('Files API', () => {
   })
 
   it('should return 400 when name is missing', async () => {
-    const res = await request(app).post('/api/files').send({ markdown: '## Todo\n' })
+    const res = await request(app).post('/api/files').send({ markdown: '# Todo\n' })
     expect(res.status).toBe(400)
   })
 
@@ -103,22 +103,22 @@ describe('Files API', () => {
   it('should update board markdown', async () => {
     const createRes = await request(app)
       .post('/api/files')
-      .send({ name: 'Test', markdown: '## Todo\n\n- [ ] Task 1\n' })
+      .send({ name: 'Test', markdown: '# Todo\n\n## Task 1\n' })
     const fileId = createRes.body.id
 
     const res = await request(app)
       .put(`/api/files/${fileId}`)
-      .send({ markdown: '## Done\n\n- [x] Task 1\n' })
+      .send({ markdown: '# Done\n\n## [x] Task 1\n' })
 
     expect(res.status).toBe(200)
-    expect(res.body.markdown).toContain('## Done')
+    expect(res.body.markdown).toContain('# Done')
     expect(res.headers.etag).toBeTruthy()
   })
 
   it('should rename a board', async () => {
     const createRes = await request(app)
       .post('/api/files')
-      .send({ name: 'Old Name', markdown: '## Todo\n' })
+      .send({ name: 'Old Name', markdown: '# Todo\n' })
     const fileId = createRes.body.id
 
     const res = await request(app)
@@ -132,7 +132,7 @@ describe('Files API', () => {
   it('should succeed with matching ETag', async () => {
     const createRes = await request(app)
       .post('/api/files')
-      .send({ name: 'Test', markdown: '## Todo\n' })
+      .send({ name: 'Test', markdown: '# Todo\n' })
     const fileId = createRes.body.id
 
     // Get current ETag
@@ -142,7 +142,7 @@ describe('Files API', () => {
     const res = await request(app)
       .put(`/api/files/${fileId}`)
       .set('If-Match', etag)
-      .send({ markdown: '## Updated\n' })
+      .send({ markdown: '# Updated\n' })
 
     expect(res.status).toBe(200)
   })
@@ -150,13 +150,13 @@ describe('Files API', () => {
   it('should return 409 with mismatched ETag', async () => {
     const createRes = await request(app)
       .post('/api/files')
-      .send({ name: 'Test', markdown: '## Todo\n' })
+      .send({ name: 'Test', markdown: '# Todo\n' })
     const fileId = createRes.body.id
 
     const res = await request(app)
       .put(`/api/files/${fileId}`)
       .set('If-Match', '"wrong-etag"')
-      .send({ markdown: '## Updated\n' })
+      .send({ markdown: '# Updated\n' })
 
     expect(res.status).toBe(409)
     expect(res.body.error).toContain('Conflict')
@@ -165,7 +165,7 @@ describe('Files API', () => {
   it('should return 404 when updating non-existent board', async () => {
     const res = await request(app)
       .put('/api/files/nonexistent')
-      .send({ markdown: '## Todo\n' })
+      .send({ markdown: '# Todo\n' })
 
     expect(res.status).toBe(404)
   })
@@ -175,7 +175,7 @@ describe('Files API', () => {
   it('should delete a board', async () => {
     const createRes = await request(app)
       .post('/api/files')
-      .send({ name: 'ToDelete', markdown: '## Todo\n' })
+      .send({ name: 'ToDelete', markdown: '# Todo\n' })
     const fileId = createRes.body.id
 
     const deleteRes = await request(app).delete(`/api/files/${fileId}`)

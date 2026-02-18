@@ -12,15 +12,13 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     name: 'Kanban',
     description: 'Standard kanban board',
     icon: 'layout-grid',
-    markdown: `# Kanban Board
+    markdown: `# To Do
 
-## To Do
+## First task
 
-- [ ] First task
+# In Progress
 
-## In Progress
-
-## Done
+# Done
 `,
   },
   {
@@ -28,20 +26,19 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     name: 'Sprint',
     description: 'Agile sprint board',
     icon: 'zap',
-    markdown: `# Sprint Board
+    markdown: `# Sprint Backlog
 
-## Sprint Backlog
+## User story 1
 
-- [ ] User story 1
-- [ ] User story 2
+## User story 2
 
-## In Development
+# In Development
 
-## Code Review
+# Code Review
 
-## Testing
+# Testing
 
-## Done
+# Done
 `,
   },
   {
@@ -49,21 +46,21 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     name: 'Project Tracker',
     description: 'Project management with phases',
     icon: 'folder-kanban',
-    markdown: `# Project Tracker
+    markdown: `# Planning
 
-## Planning
+## Define requirements
 
-- [ ] Define requirements
-- [ ] Create project timeline
-- [ ] Assign team roles
+## Create project timeline
 
-## Design
+## Assign team roles
 
-## Development
+# Design
 
-## Testing
+# Development
 
-## Launch
+# Testing
+
+# Launch
 `,
   },
   {
@@ -71,25 +68,21 @@ export const BOARD_TEMPLATES: BoardTemplate[] = [
     name: 'Personal Tasks',
     description: 'Simple personal TODO',
     icon: 'user',
-    markdown: `# My Tasks
+    markdown: `# Today
 
-## Today
+## Morning routine
 
-- [ ] Morning routine
+# This Week
 
-## This Week
-
-## Someday
+# Someday
 `,
   },
   {
     id: 'blank',
     name: 'Blank',
-    description: 'Empty board with one section',
+    description: 'Empty board with one column',
     icon: 'file',
-    markdown: `# New Board
-
-## Tasks
+    markdown: `# Tasks
 `,
   },
 ]

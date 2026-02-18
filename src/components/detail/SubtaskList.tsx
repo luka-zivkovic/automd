@@ -9,12 +9,12 @@ interface SubtaskListProps {
 }
 
 export function SubtaskList({ subtasks }: SubtaskListProps) {
-  const toggleTask = useDocumentStore((s) => s.toggleTask)
+  const toggleSubtask = useDocumentStore((s) => s.toggleSubtask)
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId)
 
   if (subtasks.length === 0) return null
 
-  const completed = subtasks.filter((s) => s.checked).length
+  const completed = subtasks.filter((s) => s.checked === true).length
 
   return (
     <div className="space-y-1">
@@ -34,14 +34,14 @@ export function SubtaskList({ subtasks }: SubtaskListProps) {
           onClick={() => setSelectedTaskId(subtask.id)}
         >
           <Checkbox
-            checked={subtask.checked}
-            onCheckedChange={() => toggleTask(subtask.id)}
+            checked={subtask.checked === true}
+            onCheckedChange={() => toggleSubtask(subtask.id)}
             onClick={(e) => e.stopPropagation()}
             className="shrink-0"
           />
           <span
             className={`flex-1 text-sm leading-snug transition-colors duration-200 ${
-              subtask.checked
+              subtask.checked === true
                 ? 'line-through text-muted-foreground/60'
                 : 'text-foreground'
             }`}

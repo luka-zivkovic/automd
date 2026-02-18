@@ -127,11 +127,13 @@ export function TaskDetailPanel() {
           <div className="px-5 pb-6 space-y-5">
             {/* Title row: checkbox + editable title */}
             <div className="flex items-start gap-3 pt-1">
-              <Checkbox
-                checked={task.checked}
-                onCheckedChange={() => toggleTask(task.id)}
-                className="mt-1.5 shrink-0"
-              />
+              {task.checked !== null && (
+                <Checkbox
+                  checked={task.checked}
+                  onCheckedChange={() => toggleTask(task.id)}
+                  className="mt-1.5 shrink-0"
+                />
+              )}
               <input
                 ref={titleRef}
                 value={titleValue}

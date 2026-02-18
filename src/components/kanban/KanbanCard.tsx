@@ -41,7 +41,7 @@ export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
   }
 
   const subtaskCount = task.children.length
-  const subtaskCompleted = task.children.filter((c) => c.checked).length
+  const subtaskCompleted = task.children.filter((c) => c.checked === true).length
 
   return (
     <div
@@ -78,16 +78,18 @@ export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
           <GripVertical className="size-3.5" />
         </div>
 
-        <Checkbox
-          checked={task.checked}
-          onCheckedChange={() => toggleTask(task.id)}
-          className="mt-0.5"
-          onClick={(e) => e.stopPropagation()}
-        />
+        {task.checked !== null && (
+          <Checkbox
+            checked={task.checked}
+            onCheckedChange={() => toggleTask(task.id)}
+            className="mt-0.5"
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
 
         <span
           className={`text-sm leading-snug transition-colors duration-200 ${
-            task.checked
+            task.checked === true
               ? 'line-through text-muted-foreground/60'
               : 'text-foreground'
           }`}

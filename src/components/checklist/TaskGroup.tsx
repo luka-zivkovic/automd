@@ -16,7 +16,7 @@ function countAllTasks(column: Column): { completed: number; total: number } {
   function count(tasks: typeof column.tasks) {
     for (const task of tasks) {
       total++
-      if (task.checked) completed++
+      if (task.checked === true) completed++
       count(task.children)
     }
   }
