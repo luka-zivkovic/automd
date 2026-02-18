@@ -1,15 +1,10 @@
 import { Router } from 'express'
 import { nanoid } from 'nanoid'
-import {
-  parseMarkdown,
-  annotateIds,
-  createIdCache,
-  extractTasksAndColumns,
-} from '@automd/shared'
 import * as storage from '../storage.js'
 import { broadcast } from '../ws.js'
 import { withWriteLock } from '../write-lock.js'
 import { isValidId, isValidName } from '../validation.js'
+import { parseBoard, invalidateBoardCache } from '../board-cache.js'
 
 export const filesRouter = Router()
 
@@ -19,8 +14,7 @@ filesRouter.get('/', (_req, res, next) => {
     const files = storage.listFiles()
     // Return metadata only (no full markdown) for listing
     const summary = files.map((f) => {
-      const ast = annotateIds(parseMarkdown(f.markdown), createIdCache())
-      const { columns } = extractTasksAndColumns(ast)
+      const { columns } = parseBoard(f.markdown, f.id)
       const taskCount = columns.reduce((sum, col) => sum + col.tasks.length, 0)
       return {
         id: f.id,
@@ -51,9 +45,7 @@ filesRouter.get('/:id', (req, res, next) => {
       return
     }
 
-    const cache = createIdCache()
-    const ast = annotateIds(parseMarkdown(file.markdown), cache)
-    const { columns, tasks } = extractTasksAndColumns(ast)
+    const { columns, tasks } = parseBoard(file.markdown, req.params.id)
 
     res.setHeader('ETag', `"${file.updatedAt}"`)
     res.json({
@@ -120,6 +112,7 @@ filesRouter.put('/:id', async (req, res, next) => {
       }
 
       if (markdown !== undefined) {
+        invalidateBoardCache(req.params.id)
         const file = storage.updateFileMarkdown(req.params.id, markdown)
         if (!file) return { status: 404 as const }
         broadcast({ type: 'file:updated', payload: { id: file.id, markdown: file.markdown, actor } })
@@ -163,6 +156,7 @@ filesRouter.delete('/:id', async (req, res, next) => {
       res.status(404).json({ error: 'Board not found' })
       return
     }
+    invalidateBoardCache(req.params.id)
     broadcast({ type: 'file:deleted', payload: { id: req.params.id, actor: req.body?.actor } })
     res.status(204).send()
   } catch (err) {
