@@ -1,0 +1,15 @@
+services:
+  automd:
+    build: .
+    ports:
+      - "4800:4800"
+    volumes:
+      - automd_data:/data
+    environment:
+      - NODE_ENV=production
+      - AUTOMD_PORT=4800
+      - AUTOMD_STORAGE_DIR=/data
+    restart: unless-stopped
+
+volumes:
+  automd_data:

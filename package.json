@@ -9,6 +9,7 @@
     "dev:server": "pnpm --filter @automd/server dev",
     "dev:mcp": "pnpm --filter @automd/mcp dev",
     "build": "tsc -b && vite build",
+    "build:production": "pnpm --filter @automd/shared build && pnpm --filter @automd/server build && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest"

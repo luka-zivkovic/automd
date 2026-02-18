@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express, { type ErrorRequestHandler } from 'express'
 import cors from 'cors'
 import { filesRouter } from './routes/files.js'
@@ -5,6 +7,8 @@ import { tasksRouter } from './routes/tasks.js'
 import { columnsRouter } from './routes/columns.js'
 import { projectsRouter } from './routes/projects.js'
 import { getStoragePath, StorageError } from './storage.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export function createApp() {
   const app = express()
@@ -21,6 +25,16 @@ export function createApp() {
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', storage: getStoragePath() })
   })
+
+  // In production, serve the Vite-built frontend as static files
+  if (process.env.NODE_ENV === 'production') {
+    const clientDist = path.resolve(__dirname, '../../client')
+    app.use(express.static(clientDist))
+    // SPA fallback: serve index.html for all non-API routes
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(clientDist, 'index.html'))
+    })
+  }
 
   // Error handling middleware
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
