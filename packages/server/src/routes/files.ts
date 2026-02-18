@@ -78,7 +78,8 @@ filesRouter.post('/', async (req, res, next) => {
       return storage.createFile(id, name, markdown, projectId)
     })
 
-    broadcast({ type: 'file:created', payload: { id: file.id, name: file.name } })
+    const actor = req.body.actor || undefined
+    broadcast({ type: 'file:created', payload: { id: file.id, name: file.name, actor } })
     res.status(201).json(file)
   } catch (err) {
     next(err)
@@ -92,7 +93,7 @@ filesRouter.put('/:id', async (req, res, next) => {
     return
   }
 
-  const { markdown, name } = req.body
+  const { markdown, name, actor } = req.body
 
   try {
     const result = await withWriteLock(() => {
@@ -114,7 +115,7 @@ filesRouter.put('/:id', async (req, res, next) => {
         invalidateBoardCache(req.params.id)
         const file = storage.updateFileMarkdown(req.params.id, markdown)
         if (!file) return { status: 404 as const }
-        broadcast({ type: 'file:updated', payload: { id: file.id, markdown: file.markdown } })
+        broadcast({ type: 'file:updated', payload: { id: file.id, markdown: file.markdown, actor } })
         return { status: 200 as const, file }
       }
 
@@ -156,7 +157,7 @@ filesRouter.delete('/:id', async (req, res, next) => {
       return
     }
     invalidateBoardCache(req.params.id)
-    broadcast({ type: 'file:deleted', payload: { id: req.params.id } })
+    broadcast({ type: 'file:deleted', payload: { id: req.params.id, actor: req.body?.actor } })
     res.status(204).send()
   } catch (err) {
     next(err)

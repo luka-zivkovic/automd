@@ -7,7 +7,8 @@ import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, FileText, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight } from 'lucide-react'
+import { Upload, Download, FileText, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity } from 'lucide-react'
+import { useActivityStore } from '@/store/activity-store'
 import { UserBadge } from '@/components/settings/UserBadge'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
@@ -31,6 +32,10 @@ export function Header() {
   const activeProject = activeFile?.projectId
     ? projects.find((p) => p.id === activeFile.projectId)
     : null
+
+  const activityOpen = useActivityStore((s) => s.isOpen)
+  const setActivityOpen = useActivityStore((s) => s.setOpen)
+  const unreadCount = useActivityStore((s) => s.unreadCount)
 
   const completedCount = tasks.filter((t) => t.checked).length
   const totalCount = tasks.length
@@ -111,6 +116,24 @@ export function Header() {
           <ConnectionStatus />
           <UserBadge />
           <ThemeToggle />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={activityOpen ? 'secondary' : 'ghost'}
+                size="icon-sm"
+                onClick={() => setActivityOpen(!activityOpen)}
+                className="text-muted-foreground hover:text-foreground relative"
+              >
+                <Activity className="size-4" />
+                {unreadCount > 0 && !activityOpen && (
+                  <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Activity feed</TooltipContent>
+          </Tooltip>
+
           <div className="w-px h-4 bg-border mx-1" />
 
           <Tooltip>
