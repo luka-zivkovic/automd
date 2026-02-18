@@ -104,7 +104,7 @@ describe('Tasks API', () => {
   it('should toggle a task', async () => {
     const boardRes = await request(app).get(`/api/files/${fileId}`)
     const taskId = boardRes.body.tasks[0].id
-    expect(boardRes.body.tasks[0].checked).toBe(false)
+    expect(boardRes.body.tasks[0].checked).toBeNull()
 
     const res = await request(app)
       .patch(`/api/files/${fileId}/tasks/${taskId}`)

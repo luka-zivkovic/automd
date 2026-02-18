@@ -48,11 +48,13 @@ export function TaskItem({ task }: TaskItemProps) {
   return (
     <div>
       <div className={`group flex items-start gap-2.5 py-2 px-2 -mx-2 rounded-lg hover:bg-accent/40 transition-colors duration-150 ${task.metadata.archived ? 'opacity-50' : ''}`}>
-        <Checkbox
-          checked={task.checked}
-          onCheckedChange={() => toggleTask(task.id)}
-          className="mt-0.5"
-        />
+        {task.checked !== null && (
+          <Checkbox
+            checked={task.checked}
+            onCheckedChange={() => toggleTask(task.id)}
+            className="mt-0.5"
+          />
+        )}
 
         {isEditing ? (
           <input
@@ -71,7 +73,7 @@ export function TaskItem({ task }: TaskItemProps) {
                 setIsEditing(true)
               }}
               className={`text-sm cursor-default select-none leading-relaxed transition-colors duration-200 ${
-                task.checked
+                task.checked === true
                   ? 'line-through text-muted-foreground/60'
                   : 'text-foreground'
               }`}

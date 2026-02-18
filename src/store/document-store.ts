@@ -15,6 +15,9 @@ import {
   updateTaskMetadata as updateTaskMetadataMutation,
   updateTaskDescription as updateTaskDescriptionMutation,
   deleteTask as deleteTaskMutation,
+  addSubtask as addSubtaskMutation,
+  toggleSubtask as toggleSubtaskMutation,
+  deleteSubtask as deleteSubtaskMutation,
   addColumn as addColumnMutation,
   renameColumn as renameColumnMutation,
   deleteColumn as deleteColumnMutation,
@@ -59,6 +62,11 @@ interface DocumentStore {
   deleteTask: (taskId: string) => void
   archiveTask: (taskId: string) => void
   unarchiveTask: (taskId: string) => void
+
+  // Subtask actions
+  addSubtask: (taskId: string, content: string) => void
+  toggleSubtask: (subtaskId: string) => void
+  deleteSubtask: (subtaskId: string) => void
 
   // Column actions
   addColumn: (title: string) => void
@@ -135,7 +143,7 @@ export const useDocumentStore = create<DocumentStore>()(
           const username = useUserStore.getState().username
 
           // When checking off a task, add built-by signature
-          if (task && !task.checked && username && !task.metadata.builtBy) {
+          if (task && task.checked === false && username && !task.metadata.builtBy) {
             get()._applyAstMutation((ast) => {
               const toggled = toggleTaskMutation(ast, taskId)
               return updateTaskMetadataMutation(
@@ -211,6 +219,25 @@ export const useDocumentStore = create<DocumentStore>()(
           if (!task) return
           get()._applyAstMutation((ast) =>
             updateTaskMetadataMutation(ast, taskId, task.displayContent, { ...task.metadata, archived: false })
+          )
+        },
+
+        addSubtask: (taskId: string, content: string) => {
+          const id = nanoid(10)
+          get()._applyAstMutation((ast) =>
+            addSubtaskMutation(ast, taskId, content, id)
+          )
+        },
+
+        toggleSubtask: (subtaskId: string) => {
+          get()._applyAstMutation((ast) =>
+            toggleSubtaskMutation(ast, subtaskId)
+          )
+        },
+
+        deleteSubtask: (subtaskId: string) => {
+          get()._applyAstMutation((ast) =>
+            deleteSubtaskMutation(ast, subtaskId)
           )
         },
 

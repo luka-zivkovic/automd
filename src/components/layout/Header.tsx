@@ -37,7 +37,7 @@ export function Header() {
   const setActivityOpen = useActivityStore((s) => s.setOpen)
   const unreadCount = useActivityStore((s) => s.unreadCount)
 
-  const completedCount = tasks.filter((t) => t.checked).length
+  const completedCount = tasks.filter((t) => t.checked === true).length
   const totalCount = tasks.length
   const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 

@@ -41,9 +41,9 @@ function taskMatchesFilters(
     }
   }
 
-  // Status filter
-  if (statusFilter === 'done' && !task.checked) return false
-  if (statusFilter === 'todo' && task.checked) return false
+  // Status filter (task.checked can be null = no checkbox)
+  if (statusFilter === 'done' && task.checked !== true) return false
+  if (statusFilter === 'todo' && task.checked === true) return false
 
   return true
 }

@@ -16,7 +16,7 @@ export interface Task {
   content: string
   displayContent: string
   metadata: TaskMetadata
-  checked: boolean
+  checked: boolean | null
   column: string
   parentHeadingId: string
   depth: number

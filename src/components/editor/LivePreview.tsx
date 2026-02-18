@@ -10,14 +10,16 @@ function PreviewTask({ task, depth = 0 }: { task: Task; depth?: number }) {
         className="flex items-start gap-2 py-0.5"
         style={{ paddingLeft: `${depth * 20}px` }}
       >
-        {task.checked ? (
-          <CheckCircle2 className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
-        ) : (
-          <Circle className="w-3.5 h-3.5 text-border mt-0.5 shrink-0" />
+        {task.checked !== null && (
+          task.checked ? (
+            <CheckCircle2 className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+          ) : (
+            <Circle className="w-3.5 h-3.5 text-border mt-0.5 shrink-0" />
+          )
         )}
         <span
           className={`text-[13px] leading-relaxed ${
-            task.checked
+            task.checked === true
               ? 'line-through text-muted-foreground/50'
               : 'text-foreground'
           }`}
@@ -33,7 +35,7 @@ function PreviewTask({ task, depth = 0 }: { task: Task; depth?: number }) {
 }
 
 function PreviewColumn({ column }: { column: Column }) {
-  const completed = column.tasks.filter((t) => t.checked).length
+  const completed = column.tasks.filter((t) => t.checked === true).length
   const total = column.tasks.length
 
   return (
@@ -68,8 +70,8 @@ export function LivePreview() {
         <div className="text-center text-muted-foreground max-w-[200px]">
           <p className="text-sm">No tasks detected yet.</p>
           <p className="text-xs mt-2 leading-relaxed">
-            Use <code className="bg-secondary px-1 py-0.5 rounded text-[11px] font-mono">## Heading</code> for
-            columns and <code className="bg-secondary px-1 py-0.5 rounded text-[11px] font-mono">- [ ]</code> for
+            Use <code className="bg-secondary px-1 py-0.5 rounded text-[11px] font-mono"># Heading</code> for
+            columns and <code className="bg-secondary px-1 py-0.5 rounded text-[11px] font-mono">## Task</code> for
             tasks.
           </p>
         </div>

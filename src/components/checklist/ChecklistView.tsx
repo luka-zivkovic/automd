@@ -43,9 +43,13 @@ export function ChecklistView() {
             <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
               Switch to the Editor and write markdown with{' '}
               <code className="bg-secondary px-1.5 py-0.5 rounded text-xs font-mono">
-                - [ ] Task name
+                # Column
               </code>{' '}
-              to get started.
+              for columns and{' '}
+              <code className="bg-secondary px-1.5 py-0.5 rounded text-xs font-mono">
+                ## Task
+              </code>{' '}
+              for tasks.
             </p>
           </div>
         </div>
@@ -54,7 +58,7 @@ export function ChecklistView() {
   }
 
   const allTasks = filteredColumns.flatMap((c) => c.tasks)
-  const totalCompleted = allTasks.filter((t) => t.checked).length
+  const totalCompleted = allTasks.filter((t) => t.checked === true).length
   const totalTasks = allTasks.length
   const overallPercent =
     totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0

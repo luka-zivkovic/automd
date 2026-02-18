@@ -46,12 +46,13 @@ export async function createTestEnv() {
   return { app, server, port, cleanup }
 }
 
-export const SAMPLE_MARKDOWN = `## Todo
+export const SAMPLE_MARKDOWN = `# Todo
 
-- [ ] Task 1
-- [ ] Task 2
+## Task 1
 
-## Done
+## Task 2
 
-- [x] Task 3
+# Done
+
+## [x] Task 3
 `

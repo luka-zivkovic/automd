@@ -23,7 +23,7 @@ export function ColumnHeader({ column, columnIndex, totalColumns }: ColumnHeader
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
 
-  const completed = column.tasks.filter((t) => t.checked).length
+  const completed = column.tasks.filter((t) => t.checked === true).length
   const total = column.tasks.length
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
 
