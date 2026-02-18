@@ -9,7 +9,12 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "esModuleInterop": true,
-    "noEmit": true
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "paths": {
+      "@automd/shared": ["../shared/dist/index.d.ts"]
+    }
   },
   "include": ["src"]
 }
