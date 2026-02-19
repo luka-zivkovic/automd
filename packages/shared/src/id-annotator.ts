@@ -2,8 +2,8 @@ import { visit } from 'unist-util-visit'
 import { toString } from 'mdast-util-to-string'
 import { nanoid } from 'nanoid'
 import type { Root, Heading, ListItem, Content } from 'mdast'
-import type { IdCache } from './types'
-import { detectHeadingStructure } from './task-extractor'
+import type { IdCache } from './types.js'
+import { detectHeadingStructure } from './task-extractor.js'
 
 export function createIdCache(): IdCache {
   return {

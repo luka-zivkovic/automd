@@ -4,9 +4,10 @@ WORKDIR /app
 
 # ── Install dependencies ──
 FROM base AS deps
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
+COPY packages/mcp/package.json packages/mcp/
 RUN pnpm install --frozen-lockfile
 
 # ── Build everything ──
@@ -22,12 +23,15 @@ RUN pnpm exec vite build
 
 # ── Production image ──
 FROM base AS production
+ARG AUTOMD_VERSION=dev
 ENV NODE_ENV=production
+ENV AUTOMD_VERSION=${AUTOMD_VERSION}
 
 # Copy package manifests for pnpm install --prod
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
+COPY packages/mcp/package.json packages/mcp/
 
 RUN pnpm install --frozen-lockfile --prod
 

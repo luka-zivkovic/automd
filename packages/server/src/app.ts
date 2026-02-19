@@ -7,6 +7,7 @@ import { tasksRouter } from './routes/tasks.js'
 import { columnsRouter } from './routes/columns.js'
 import { projectsRouter } from './routes/projects.js'
 import { getStoragePath, StorageError } from './storage.js'
+import { getUpdateInfo } from './update-check.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -26,12 +27,17 @@ export function createApp() {
     res.json({ status: 'ok', storage: getStoragePath() })
   })
 
+  // Version and update info
+  app.get('/api/version', (_req, res) => {
+    res.json(getUpdateInfo())
+  })
+
   // In production, serve the Vite-built frontend as static files
   if (process.env.NODE_ENV === 'production') {
-    const clientDist = path.resolve(__dirname, '../../client')
+    const clientDist = path.resolve(__dirname, '../../../client')
     app.use(express.static(clientDist))
     // SPA fallback: serve index.html for all non-API routes
-    app.get('*', (_req, res) => {
+    app.get('{*path}', (_req, res) => {
       res.sendFile(path.join(clientDist, 'index.html'))
     })
   }
