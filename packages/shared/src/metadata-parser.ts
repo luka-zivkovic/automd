@@ -1,4 +1,4 @@
-import type { TaskMetadata } from './types'
+import type { TaskMetadata } from './types.js'
 
 const ASSIGNEE_RE = /@(\w[\w-]*)/g
 const LABEL_RE = /#(\w[\w-]*)/g

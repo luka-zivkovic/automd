@@ -7,7 +7,7 @@ import { registerPrompts } from './prompts.js'
 
 const server = new McpServer({
   name: 'automd',
-  version: '0.0.1',
+  version: '0.1.0',
 }, {
   capabilities: {
     tools: {},

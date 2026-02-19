@@ -1,7 +1,7 @@
 import { toString } from 'mdast-util-to-string'
 import type { Root, Heading, List, ListItem, RootContent } from 'mdast'
-import type { Task, Column } from './types'
-import { parseMetadata } from './metadata-parser'
+import type { Task, Column } from './types.js'
+import { parseMetadata } from './metadata-parser.js'
 
 const UNCATEGORIZED_ID = '__uncategorized__'
 const UNCATEGORIZED_TITLE = 'Tasks'

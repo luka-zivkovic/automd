@@ -10,6 +10,7 @@ import { Sidebar } from '@/components/sidebar/Sidebar'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { LoadingSkeleton } from '@/components/layout/LoadingSkeleton'
 import { ActivityFeed } from '@/components/activity/ActivityFeed'
+import { UpdateBanner } from '@/components/layout/UpdateBanner'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useActiveFileSync } from '@/hooks/useActiveFileSync'
 import { useServerSync } from '@/hooks/useServerSync'
@@ -30,6 +31,7 @@ function App() {
       <FileDropZone>
         <div className="h-screen flex flex-col bg-background text-foreground paper-texture">
           <Header />
+          <UpdateBanner />
           <div className="flex flex-1 overflow-hidden">
             <Sidebar />
             <main className="flex-1 overflow-hidden">

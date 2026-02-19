@@ -1,4 +1,4 @@
-import type { TaskMetadata } from './types'
+import type { TaskMetadata } from './types.js'
 
 export function serializeMetadata(
   displayContent: string,

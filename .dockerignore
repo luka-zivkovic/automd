@@ -1,8 +1,7 @@
-node_modules
-dist
+**/node_modules
+**/dist
 .env
 .git
 .gitignore
 *.md
 !packages/*/package.json
-nul

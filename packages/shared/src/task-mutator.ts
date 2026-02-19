@@ -10,9 +10,9 @@ import type {
   RootContent,
 } from 'mdast'
 import { toString } from 'mdast-util-to-string'
-import type { TaskMetadata } from './types'
-import { serializeMetadata } from './metadata-serializer'
-import { detectHeadingStructure } from './task-extractor'
+import type { TaskMetadata } from './types.js'
+import { serializeMetadata } from './metadata-serializer.js'
+import { detectHeadingStructure } from './task-extractor.js'
 
 // ─── Shared Helpers ──────────────────────────────────────────────────
 
