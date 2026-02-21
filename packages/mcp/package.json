@@ -1,24 +1,41 @@
 {
-  "name": "@automd/mcp",
+  "name": "automd-mcp",
   "version": "0.1.0",
-  "private": true,
+  "description": "MCP server for AutoMD — manage Kanban boards stored as markdown",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "bin": {
-    "automd-mcp": "./src/index.ts"
+    "automd-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "node dist/index.js",
+    "build": "tsup",
+    "prepublishOnly": "pnpm build"
   },
-  "dependencies": {
-    "@automd/shared": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "zod": "^4.3.6"
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "kanban",
+    "markdown",
+    "automd",
+    "task-management"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luka-zivkovic/automd"
   },
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Luka Zivkovic",
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "@types/mdast": "^4.0.4",
+    "tsup": "^8.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "zod": "^4.3.6"
   }
 }

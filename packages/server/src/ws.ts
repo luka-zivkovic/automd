@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
+import { isAuthDisabled, isSetupComplete, validateCredential } from './auth-storage.js'
 
 export interface BroadcastEvent {
   type: string
@@ -20,7 +21,26 @@ function broadcastPresence() {
 }
 
 export function setupWebSocket(server: Server): WebSocketServer {
-  wss = new WebSocketServer({ server, path: '/ws' })
+  wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    verifyClient: (info, callback) => {
+      if (isAuthDisabled() || !isSetupComplete()) {
+        callback(true)
+        return
+      }
+
+      const url = new URL(info.req.url || '', `http://${info.req.headers.host ?? 'localhost'}`)
+      const token = url.searchParams.get('token')
+
+      if (!token || !validateCredential(token)) {
+        callback(false, 401, 'Unauthorized')
+        return
+      }
+
+      callback(true)
+    },
+  })
 
   wss.on('connection', (ws) => {
     console.log('[ws] Client connected')

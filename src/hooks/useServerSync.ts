@@ -3,38 +3,13 @@ import { useFilesStore } from '@/store/files-store'
 import { useDocumentStore } from '@/store/document-store'
 import { useConnectionStore } from '@/store/connection-store'
 import { useUserStore } from '@/store/user-store'
+import { useAuthStore } from '@/store/auth-store'
 import { useActivityStore } from '@/store/activity-store'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 import { toast } from 'sonner'
+import { apiFetch, WS_BASE } from '@/lib/api'
 
 const SERVER_URL = import.meta.env.VITE_AUTOMD_SERVER ?? ''
-const API_BASE = SERVER_URL ? `${SERVER_URL}/api` : ''
-const WS_URL = SERVER_URL ? SERVER_URL.replace(/^http/, 'ws') + '/ws' : ''
-
-// --- Error-aware API fetch ---
-
-type ApiResult<T = unknown> =
-  | { ok: true; data: T }
-  | { ok: false; error: string; status?: number }
-
-async function apiFetch<T = unknown>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
-  if (!API_BASE) return { ok: false, error: 'No server configured' }
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: { 'Content-Type': 'application/json', ...options?.headers },
-    })
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      return { ok: false, error: body || res.statusText, status: res.status }
-    }
-    if (res.status === 204) return { ok: true, data: null as T }
-    const data = await res.json()
-    return { ok: true, data }
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : 'Network error' }
-  }
-}
 
 /**
  * Syncs the web app with automd-server when VITE_AUTOMD_SERVER is set.
@@ -46,6 +21,7 @@ async function apiFetch<T = unknown>(path: string, options?: RequestInit): Promi
  * - Activity events (8C): pushes human-readable events to the activity store
  */
 export function useServerSync() {
+  const authToken = useAuthStore((s) => s.token)
   const wsRef = useRef<WebSocket | null>(null)
   const isServerUpdateRef = useRef(false)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -56,6 +32,10 @@ export function useServerSync() {
 
   useEffect(() => {
     if (!SERVER_URL) return // Local-only mode
+
+    // Don't connect until auth is resolved
+    const authStatus = useAuthStore.getState().status
+    if (authStatus !== 'authenticated') return
 
     mountedRef.current = true
 
@@ -123,9 +103,11 @@ export function useServerSync() {
 
     // --- 2. WebSocket: real-time updates + presence ---
     function connectWs() {
-      if (!mountedRef.current || !WS_URL) return
+      if (!mountedRef.current || !WS_BASE) return
 
-      const ws = new WebSocket(WS_URL)
+      const token = useAuthStore.getState().token
+      const wsUrl = token ? `${WS_BASE}?token=${encodeURIComponent(token)}` : WS_BASE
+      const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -371,5 +353,5 @@ export function useServerSync() {
       useConnectionStore.getState().setStatus('disconnected')
       useConnectionStore.getState().setAgents([])
     }
-  }, [])
+  }, [authToken])
 }
