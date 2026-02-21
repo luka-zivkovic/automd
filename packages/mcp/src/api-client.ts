@@ -1,4 +1,5 @@
 const BASE_URL = process.env.AUTOMD_SERVER_URL ?? 'http://localhost:4800'
+const API_KEY = process.env.AUTOMD_API_KEY ?? ''
 
 const MAX_RETRIES = 3
 const BASE_DELAY = 500
@@ -21,6 +22,9 @@ class ApiError extends Error {
         break
       case 409:
         hint = 'The resource was modified by another client. Re-fetch the resource and retry your operation.'
+        break
+      case 401:
+        hint = 'Authentication failed. Ensure AUTOMD_API_KEY is set with a valid API key. Generate one in AutoMD Settings > API Keys.'
         break
       case 413:
         hint = 'Request body too large. Reduce the content size.'
@@ -60,6 +64,7 @@ async function request(path: string, options?: RequestInit) {
         ...options,
         headers: {
           'Content-Type': 'application/json',
+          ...(API_KEY ? { 'Authorization': `Bearer ${API_KEY}` } : {}),
           ...options?.headers,
         },
       })

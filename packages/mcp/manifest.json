@@ -1,0 +1,58 @@
+{
+  "manifest_version": "0.3",
+  "name": "automd",
+  "display_name": "AutoMD",
+  "version": "0.1.0",
+  "description": "Manage Kanban boards stored as markdown files. Create boards, add tasks, move tasks between columns, search across boards, and more.",
+  "author": {
+    "name": "Luka Zivkovic"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luka-zivkovic/automd"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "AUTOMD_SERVER_URL": "${user_config.server_url}",
+        "AUTOMD_API_KEY": "${user_config.api_key}"
+      }
+    }
+  },
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "Server URL",
+      "description": "URL of your AutoMD server (e.g., https://automd.example.com)",
+      "required": true,
+      "default": "http://localhost:4800"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "description": "API key for authentication. Generate one in AutoMD Settings > API Keys.",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "tools": [
+    { "name": "list_boards", "description": "List all boards with task counts" },
+    { "name": "get_board", "description": "Get a board with columns and tasks" },
+    { "name": "create_board", "description": "Create a new board" },
+    { "name": "add_task", "description": "Add a task to a column" },
+    { "name": "update_task", "description": "Update task content" },
+    { "name": "move_task", "description": "Move task between columns" },
+    { "name": "search_tasks", "description": "Search tasks across all boards" }
+  ],
+  "keywords": ["kanban", "markdown", "task-management", "project-management"],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

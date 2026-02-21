@@ -1,14 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import type { BoardFile, Project } from '@automd/shared'
 import { DEFAULT_MARKDOWN } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
-
-// Lazy-evaluated paths to support AUTOMD_STORAGE_DIR override (used in tests)
-function getAutomdDir() {
-  return process.env.AUTOMD_STORAGE_DIR ?? path.join(os.homedir(), '.automd')
-}
+import { getAutomdDir } from './config.js'
 function getBoardsDir() {
   return path.join(getAutomdDir(), 'boards')
 }

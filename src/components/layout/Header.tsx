@@ -7,11 +7,16 @@ import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, FileText, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity } from 'lucide-react'
+import { Upload, Download, FileText, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut } from 'lucide-react'
 import { useActivityStore } from '@/store/activity-store'
+import { useAuthStore } from '@/store/auth-store'
 import { UserBadge } from '@/components/settings/UserBadge'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
+import { ApiKeyManager } from '@/components/settings/ApiKeyManager'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
+import { apiFetch } from '@/lib/api'
+
+const HAS_SERVER = !!import.meta.env.VITE_AUTOMD_SERVER
 
 export function Header() {
   const tasks = useDocumentStore((s) => s.tasks)
@@ -36,6 +41,13 @@ export function Header() {
   const activityOpen = useActivityStore((s) => s.isOpen)
   const setActivityOpen = useActivityStore((s) => s.setOpen)
   const unreadCount = useActivityStore((s) => s.unreadCount)
+  const authStatus = useAuthStore((s) => s.status)
+  const isAuthed = HAS_SERVER && authStatus === 'authenticated'
+
+  async function handleLogout() {
+    await apiFetch('/auth/logout', { method: 'POST' })
+    useAuthStore.getState().clearAuth()
+  }
 
   const completedCount = tasks.filter((t) => t.checked === true).length
   const totalCount = tasks.length
@@ -116,6 +128,22 @@ export function Header() {
           <ConnectionStatus />
           <UserBadge />
           <ThemeToggle />
+          {isAuthed && <ApiKeyManager />}
+          {isAuthed && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleLogout}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <LogOut className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Sign out</TooltipContent>
+            </Tooltip>
+          )}
 
           <Tooltip>
             <TooltipTrigger asChild>

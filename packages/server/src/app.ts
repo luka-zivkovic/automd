@@ -2,12 +2,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express, { type ErrorRequestHandler } from 'express'
 import cors from 'cors'
+import { authRouter } from './routes/auth.js'
 import { filesRouter } from './routes/files.js'
 import { tasksRouter } from './routes/tasks.js'
 import { columnsRouter } from './routes/columns.js'
 import { projectsRouter } from './routes/projects.js'
 import { getStoragePath, StorageError } from './storage.js'
 import { getUpdateInfo } from './update-check.js'
+import { requireAuth } from './auth-middleware.js'
+import { isSetupComplete, isAuthDisabled } from './auth-storage.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -16,21 +19,30 @@ export function createApp() {
   app.use(cors())
   app.use(express.json({ limit: '5mb' }))
 
-  // Routes
+  // Public endpoints (no auth required)
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      status: 'ok',
+      storage: getStoragePath(),
+      authRequired: isSetupComplete() && !isAuthDisabled(),
+    })
+  })
+
+  app.get('/api/version', (_req, res) => {
+    res.json(getUpdateInfo())
+  })
+
+  // Auth routes (handle their own auth checks internally)
+  app.use('/api/auth', authRouter)
+
+  // Auth middleware — protects all routes below
+  app.use('/api', requireAuth)
+
+  // Protected routes
   app.use('/api/files', filesRouter)
   app.use('/api/files/:fileId/tasks', tasksRouter)
   app.use('/api/files/:fileId/columns', columnsRouter)
   app.use('/api/projects', projectsRouter)
-
-  // Health check
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', storage: getStoragePath() })
-  })
-
-  // Version and update info
-  app.get('/api/version', (_req, res) => {
-    res.json(getUpdateInfo())
-  })
 
   // In production, serve the Vite-built frontend as static files
   if (process.env.NODE_ENV === 'production') {
