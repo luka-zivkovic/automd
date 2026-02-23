@@ -11,6 +11,7 @@ import { getStoragePath, StorageError } from './storage.js'
 import { getUpdateInfo } from './update-check.js'
 import { requireAuth } from './auth-middleware.js'
 import { isSetupComplete, isAuthDisabled } from './auth-storage.js'
+import { getS3SyncStatus } from './s3-sync.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -25,6 +26,7 @@ export function createApp() {
       status: 'ok',
       storage: getStoragePath(),
       authRequired: isSetupComplete() && !isAuthDisabled(),
+      s3: getS3SyncStatus(),
     })
   })
 

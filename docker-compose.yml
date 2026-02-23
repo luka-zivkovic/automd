@@ -10,6 +10,12 @@ services:
       - NODE_ENV=production
       - AUTOMD_PORT=4800
       - AUTOMD_STORAGE_DIR=/data
+      # S3 backup (optional — all 3 required to enable sync)
+      # - AUTOMD_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+      # - AUTOMD_S3_BUCKET=automd-backups
+      # - AUTOMD_S3_ACCESS_KEY_ID=
+      # - AUTOMD_S3_SECRET_ACCESS_KEY=
+      # - AUTOMD_S3_PREFIX=               # optional namespace prefix
     restart: unless-stopped
 
 volumes:

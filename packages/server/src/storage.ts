@@ -4,6 +4,7 @@ import type { BoardFile, Project } from '@automd/shared'
 import { DEFAULT_MARKDOWN } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
 import { getAutomdDir } from './config.js'
+import { syncFileToS3, deleteFileFromS3 } from './s3-sync.js'
 function getBoardsDir() {
   return path.join(getAutomdDir(), 'boards')
 }
@@ -67,8 +68,10 @@ function writeManifest(manifest: Manifest) {
   const manifestPath = getManifestPath()
   const tmpPath = manifestPath + '.tmp'
   try {
-    fs.writeFileSync(tmpPath, JSON.stringify(manifest, null, 2), 'utf-8')
+    const json = JSON.stringify(manifest, null, 2)
+    fs.writeFileSync(tmpPath, json, 'utf-8')
     fs.renameSync(tmpPath, manifestPath)
+    syncFileToS3(manifestPath, json).catch(() => {})
   } catch (err) {
     try {
       fs.unlinkSync(tmpPath)
@@ -179,6 +182,7 @@ export function createFile(
     const mdPath = safeBoardPath(filename)
     ensureDirs()
     fs.writeFileSync(mdPath, content, 'utf-8')
+    syncFileToS3(mdPath, content).catch(() => {})
 
     const entry = {
       id,
@@ -216,6 +220,7 @@ export function updateFileMarkdown(id: string, markdown: string): BoardFile | nu
 
     const mdPath = safeBoardPath(entry.filename)
     fs.writeFileSync(mdPath, markdown, 'utf-8')
+    syncFileToS3(mdPath, markdown).catch(() => {})
 
     return {
       id: entry.id,
@@ -257,7 +262,10 @@ export function deleteFile(id: string): boolean {
     const entry = manifest.files[idx]
     const mdPath = safeBoardPath(entry.filename)
     try {
-      if (fs.existsSync(mdPath)) fs.unlinkSync(mdPath)
+      if (fs.existsSync(mdPath)) {
+        fs.unlinkSync(mdPath)
+        deleteFileFromS3(mdPath).catch(() => {})
+      }
     } catch (err) {
       console.error(`[storage] Failed to delete board file ${entry.filename}:`, err)
     }
