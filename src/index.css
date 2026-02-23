@@ -46,7 +46,7 @@
 
   /* Typography system */
   --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
-  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-serif: 'Space Grotesk', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
@@ -158,7 +158,7 @@
    Display font utility
    ═══════════════════════════════════════════════ */
 .font-display {
-  font-family: 'Instrument Serif', Georgia, serif;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
 }
 
 /* ═══════════════════════════════════════════════
