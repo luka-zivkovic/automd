@@ -54,7 +54,7 @@ function FilterDropdown({
   )
 }
 
-export function FilterBar() {
+export function FilterBar({ children }: { children?: React.ReactNode }) {
   const searchQuery = useFilterStore((s) => s.searchQuery)
   const setSearchQuery = useFilterStore((s) => s.setSearchQuery)
   const assigneeFilter = useFilterStore((s) => s.assigneeFilter)
@@ -206,6 +206,9 @@ export function FilterBar() {
             Clear all
           </button>
         )}
+
+        {/* Trailing actions */}
+        {children && <div className="ml-auto flex items-center gap-1">{children}</div>}
       </div>
 
       {/* Active filter chips */}

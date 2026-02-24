@@ -10,6 +10,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  SplitSquareHorizontal,
 } from 'lucide-react'
 import { useUiStore } from '@/store/ui-store'
 import { useDocumentStore } from '@/store/document-store'
@@ -32,6 +33,8 @@ export function CommandPalette() {
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId)
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
+  const showSplitEditor = useUiStore((s) => s.showSplitEditor)
+  const toggleSplitEditor = useUiStore((s) => s.toggleSplitEditor)
 
   const tasks = useDocumentStore((s) => s.tasks)
   const files = useFilesStore((s) => s.files)
@@ -176,6 +179,16 @@ export function CommandPalette() {
           close()
         },
       },
+      {
+        id: 'action-toggle-split-editor',
+        type: 'action',
+        label: showSplitEditor ? 'Hide Markdown Editor' : 'Show Markdown Editor',
+        icon: <SplitSquareHorizontal className="size-4 text-slate-500 dark:text-slate-400" />,
+        action: () => {
+          toggleSplitEditor()
+          close()
+        },
+      },
     ]
 
     // Filter actions by query if searching
@@ -192,10 +205,12 @@ export function CommandPalette() {
     crossFileResults,
     files,
     sidebarOpen,
+    showSplitEditor,
     setSelectedTaskId,
     setActiveView,
     setActiveFile,
     setSidebarOpen,
+    toggleSplitEditor,
     createFile,
     close,
   ])

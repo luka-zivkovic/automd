@@ -12,6 +12,7 @@ export function useKeyboardShortcuts() {
   const { exportFile } = useFileExport()
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
   const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen)
+  const toggleSplitEditor = useUiStore((s) => s.toggleSplitEditor)
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -82,11 +83,19 @@ export function useKeyboardShortcuts() {
             e.preventDefault()
             setSidebarOpen(!useUiStore.getState().sidebarOpen)
             break
+          case 'e': {
+            const view = useUiStore.getState().activeView
+            if (view === 'checklist' || view === 'kanban') {
+              e.preventDefault()
+              toggleSplitEditor()
+            }
+            break
+          }
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [setActiveView, importFile, exportFile, undo, redo, setSidebarOpen, setCommandPaletteOpen])
+  }, [setActiveView, importFile, exportFile, undo, redo, setSidebarOpen, setCommandPaletteOpen, toggleSplitEditor])
 }

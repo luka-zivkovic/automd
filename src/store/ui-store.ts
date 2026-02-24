@@ -18,6 +18,9 @@ interface UiStore {
 
   commandPaletteOpen: boolean
   setCommandPaletteOpen: (open: boolean) => void
+
+  showSplitEditor: boolean
+  toggleSplitEditor: () => void
 }
 
 export const useUiStore = create<UiStore>()(
@@ -37,6 +40,9 @@ export const useUiStore = create<UiStore>()(
 
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+      showSplitEditor: false,
+      toggleSplitEditor: () => set((s) => ({ showSplitEditor: !s.showSplitEditor })),
     }),
     {
       name: 'automd-ui',
@@ -44,6 +50,7 @@ export const useUiStore = create<UiStore>()(
         activeView: state.activeView,
         editorPanelWidth: state.editorPanelWidth,
         sidebarOpen: state.sidebarOpen,
+        showSplitEditor: state.showSplitEditor,
       }),
     }
   )
