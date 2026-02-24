@@ -107,7 +107,8 @@ authRouter.post('/api-keys', requireAuth, (req, res) => {
 
 // Delete API key — requires auth
 authRouter.delete('/api-keys/:id', requireAuth, (req, res) => {
-  const deleted = deleteApiKey(req.params.id)
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+  const deleted = deleteApiKey(id)
   if (!deleted) {
     res.status(404).json({ error: 'API key not found.' })
     return
