@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n server,web -c green,cyan \"pnpm dev:server\" \"pnpm dev:web\"",
+    "dev": "concurrently --raw \"pnpm dev:server\" \"pnpm dev:web\"",
     "dev:web": "vite",
     "dev:server": "pnpm --filter @automd/server dev",
     "dev:mcp": "pnpm --filter automd-mcp dev",

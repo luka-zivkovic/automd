@@ -7,7 +7,7 @@ import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, FileText, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut } from 'lucide-react'
+import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut } from 'lucide-react'
 import { useActivityStore } from '@/store/activity-store'
 import { useAuthStore } from '@/store/auth-store'
 import { UserBadge } from '@/components/settings/UserBadge'
@@ -78,9 +78,7 @@ export function Header() {
           </Tooltip>
 
           <div className="flex items-center gap-2.5">
-            <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center">
-              <FileText className="size-3.5 text-primary" />
-            </div>
+            <img src="/logo.png" alt="automd" className="size-7 rounded-lg" />
             <h1 className="font-display text-[22px] tracking-tight text-foreground italic">
               automd
             </h1>

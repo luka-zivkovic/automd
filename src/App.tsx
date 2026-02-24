@@ -41,43 +41,49 @@ function App() {
       return
     }
 
-    async function checkAuth() {
-      try {
-        const res = await fetch(`${API_BASE}/auth/status`)
-        const data = await res.json()
+    async function checkAuth(retries = 5, delay = 1000) {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const res = await fetch(`${API_BASE}/auth/status`)
+          const data = await res.json()
 
-        if (!data.authEnabled) {
-          // Auth disabled on server (AUTOMD_DISABLE_AUTH=true or no admin yet and auth not required)
-          useAuthStore.getState().setStatus('authenticated')
-          return
-        }
-
-        if (!data.setupComplete) {
-          useAuthStore.getState().setStatus('needs-setup')
-          return
-        }
-
-        // Auth is enabled — validate existing token if we have one
-        const storedToken = useAuthStore.getState().token
-        if (storedToken) {
-          const meRes = await fetch(`${API_BASE}/auth/me`, {
-            headers: { 'Authorization': `Bearer ${storedToken}` },
-          })
-          if (meRes.ok) {
-            const me = await meRes.json()
-            useAuthStore.getState().setAuth(storedToken, me.email)
+          if (!data.setupComplete) {
+            useAuthStore.getState().setStatus('needs-setup')
             return
           }
-        }
 
-        // No valid token — need to log in
-        useAuthStore.getState().clearAuth()
-      } catch {
-        // Server unreachable — if we have a token, try to use it
-        if (useAuthStore.getState().token) {
-          useAuthStore.getState().setStatus('authenticated')
-        } else {
-          useAuthStore.getState().setStatus('unauthenticated')
+          if (!data.authEnabled) {
+            useAuthStore.getState().setStatus('authenticated')
+            return
+          }
+
+          // Auth enabled — validate existing token
+          const storedToken = useAuthStore.getState().token
+          if (storedToken) {
+            const meRes = await fetch(`${API_BASE}/auth/me`, {
+              headers: { 'Authorization': `Bearer ${storedToken}` },
+            })
+            if (meRes.ok) {
+              const me = await meRes.json()
+              useAuthStore.getState().setAuth(storedToken, me.email)
+              return
+            }
+          }
+
+          useAuthStore.getState().clearAuth()
+          return
+        } catch {
+          // Server unreachable — retry if we have attempts left
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, delay))
+            continue
+          }
+          // All retries exhausted
+          if (useAuthStore.getState().token) {
+            useAuthStore.getState().setStatus('authenticated')
+          } else {
+            useAuthStore.getState().setStatus('needs-setup')
+          }
         }
       }
     }
