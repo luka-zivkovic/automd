@@ -21,9 +21,7 @@ import { useActiveFileSync } from '@/hooks/useActiveFileSync'
 import { useServerSync } from '@/hooks/useServerSync'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
-import { API_BASE } from '@/lib/api'
-
-const HAS_SERVER = !!import.meta.env.VITE_AUTOMD_SERVER
+import { API_BASE, HAS_SERVER } from '@/lib/api'
 
 function App() {
   const activeView = useUiStore((s) => s.activeView)

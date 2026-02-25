@@ -1,8 +1,20 @@
 import { useAuthStore } from '@/store/auth-store'
 
-const SERVER_URL = import.meta.env.VITE_AUTOMD_SERVER ?? ''
-export const API_BASE = SERVER_URL ? `${SERVER_URL}/api` : ''
-export const WS_BASE = SERVER_URL ? SERVER_URL.replace(/^http/, 'ws') + '/ws' : ''
+const explicitServer = import.meta.env.VITE_AUTOMD_SERVER ?? ''
+const isLocalOnly = import.meta.env.VITE_LOCAL_ONLY === 'true'
+
+/** Whether we should connect to a server (true by default; opt out with VITE_LOCAL_ONLY=true) */
+export const HAS_SERVER = !isLocalOnly
+
+export const API_BASE = HAS_SERVER
+  ? (explicitServer ? `${explicitServer}/api` : '/api')
+  : ''
+
+export const WS_BASE = HAS_SERVER
+  ? (explicitServer
+      ? explicitServer.replace(/^http/, 'ws') + '/ws'
+      : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`)
+  : ''
 
 export type ApiResult<T = unknown> =
   | { ok: true; data: T }

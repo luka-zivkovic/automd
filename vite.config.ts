@@ -11,4 +11,16 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: `http://localhost:${process.env.AUTOMD_PORT || 4800}`,
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: `ws://localhost:${process.env.AUTOMD_PORT || 4800}`,
+        ws: true,
+      },
+    },
+  },
 })

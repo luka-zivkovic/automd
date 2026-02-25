@@ -1,4 +1,5 @@
 import { useConnectionStore, type ConnectionStatus as Status } from '@/store/connection-store'
+import { HAS_SERVER } from '@/lib/api'
 import { Wifi, WifiOff, Loader2, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -38,7 +39,7 @@ export function ConnectionStatus() {
   const config = statusConfig[status]
   const Icon = config.icon
 
-  if (!import.meta.env.VITE_AUTOMD_SERVER) return null
+  if (!HAS_SERVER) return null
 
   return (
     <div className="flex items-center gap-1">

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { HAS_SERVER } from '@/lib/api'
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting'
 
@@ -21,7 +22,7 @@ interface ConnectionStore {
 export const useConnectionStore = create<ConnectionStore>()((set) => ({
   status: 'disconnected',
   agents: [],
-  isLoading: !!import.meta.env.VITE_AUTOMD_SERVER,
+  isLoading: HAS_SERVER,
   lastError: null,
   setStatus: (status) => set({ status }),
   setAgents: (agents) => set({ agents }),
