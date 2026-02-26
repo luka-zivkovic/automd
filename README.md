@@ -88,12 +88,13 @@ The app checks for new releases in the background and shows a banner when an upd
 
 ## Configuration
 
-Copy `.env.example` to `.env` for local overrides:
+All settings have sensible defaults — no `.env` file is needed for basic usage. Copy `.env.example` to `.env` to override:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AUTOMD_PORT` | `4800` | API server port |
-| `VITE_AUTOMD_SERVER` | `http://localhost:4800` | Server URL used by the frontend |
+| `VITE_AUTOMD_SERVER` | same-origin | Override frontend server URL (for remote API) |
+| `VITE_LOCAL_ONLY` | `false` | Disable server, use browser localStorage only |
 | `AUTOMD_STORAGE_DIR` | `~/.automd` | Data storage directory |
 | `AUTOMD_DISABLE_AUTH` | `false` | Disable authentication (dev only) |
 | `AUTOMD_DISABLE_UPDATE_CHECK` | `false` | Disable GitHub release update checks |

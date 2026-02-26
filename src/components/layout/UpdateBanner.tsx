@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { X, ArrowUpCircle } from 'lucide-react'
+import { HAS_SERVER, API_BASE } from '@/lib/api'
 
-const SERVER_URL = import.meta.env.VITE_AUTOMD_SERVER ?? ''
 const DISMISSED_KEY = 'automd:update-dismissed-version'
 
 interface VersionInfo {
@@ -16,10 +16,9 @@ export function UpdateBanner() {
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
-    if (!SERVER_URL) return
+    if (!HAS_SERVER) return
 
-    const apiBase = `${SERVER_URL}/api`
-    fetch(`${apiBase}/version`)
+    fetch(`${API_BASE}/version`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data: VersionInfo | null) => {
         if (!data?.updateAvailable || !data.latest) return

@@ -14,9 +14,7 @@ import { UserBadge } from '@/components/settings/UserBadge'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { ApiKeyManager } from '@/components/settings/ApiKeyManager'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
-import { apiFetch } from '@/lib/api'
-
-const HAS_SERVER = !!import.meta.env.VITE_AUTOMD_SERVER
+import { apiFetch, HAS_SERVER } from '@/lib/api'
 
 export function Header() {
   const tasks = useDocumentStore((s) => s.tasks)

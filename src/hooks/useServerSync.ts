@@ -7,13 +7,11 @@ import { useAuthStore } from '@/store/auth-store'
 import { useActivityStore } from '@/store/activity-store'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 import { toast } from 'sonner'
-import { apiFetch, WS_BASE } from '@/lib/api'
-
-const SERVER_URL = import.meta.env.VITE_AUTOMD_SERVER ?? ''
+import { apiFetch, WS_BASE, HAS_SERVER } from '@/lib/api'
 
 /**
- * Syncs the web app with automd-server when VITE_AUTOMD_SERVER is set.
- * When not set (default), the app runs in local-only mode with localStorage.
+ * Syncs the web app with automd-server.
+ * Disabled when VITE_LOCAL_ONLY=true (local-only mode with localStorage).
  *
  * Features:
  * - Presence protocol (8A): sends username on connect, receives agent list
@@ -31,7 +29,7 @@ export function useServerSync() {
   const saveDebouncerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!SERVER_URL) return // Local-only mode
+    if (!HAS_SERVER) return // Local-only mode
 
     // Don't connect until auth is resolved
     const authStatus = useAuthStore.getState().status
@@ -277,7 +275,7 @@ export function useServerSync() {
       (state) => state.markdown,
       (_markdown) => {
         if (isServerUpdateRef.current) return
-        if (!SERVER_URL) return
+        if (!HAS_SERVER) return
 
         const activeFileId = useFilesStore.getState().activeFileId
         if (!activeFileId) return
