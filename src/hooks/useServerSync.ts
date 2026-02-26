@@ -234,6 +234,8 @@ export function useServerSync() {
 
       ws.onclose = () => {
         console.log('[automd] WebSocket disconnected')
+        // Guard: if wsRef was already reassigned (manual reconnect), skip auto-reconnect
+        if (wsRef.current !== ws && wsRef.current !== null) return
         wsRef.current = null
         if (!mountedRef.current) return
 
@@ -255,6 +257,20 @@ export function useServerSync() {
     }
 
     connectWs()
+
+    // Expose manual reconnect for the UI
+    useConnectionStore.getState().setReconnect(() => {
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+      reconnectAttemptRef.current = 0
+      connectWs()
+    })
 
     // --- 3. Re-send presence when username changes ---
     const unsubUsername = useUserStore.subscribe(
@@ -350,6 +366,7 @@ export function useServerSync() {
       }
       useConnectionStore.getState().setStatus('disconnected')
       useConnectionStore.getState().setAgents([])
+      useConnectionStore.getState().setReconnect(null)
     }
   }, [authToken])
 }

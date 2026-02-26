@@ -42,8 +42,32 @@ export function setupWebSocket(server: Server): WebSocketServer {
     },
   })
 
+  // Ping every 30s to keep connections alive through reverse proxies (Traefik, nginx, etc.)
+  const PING_INTERVAL = 30_000
+  const aliveClients = new Set<WebSocket>()
+
+  const heartbeat = setInterval(() => {
+    if (!wss) return
+    for (const ws of wss.clients) {
+      if (!aliveClients.has(ws)) {
+        // Pong not received since last ping — connection is dead
+        ws.terminate()
+        continue
+      }
+      aliveClients.delete(ws)
+      ws.ping()
+    }
+  }, PING_INTERVAL)
+
+  wss.on('close', () => clearInterval(heartbeat))
+
   wss.on('connection', (ws) => {
     console.log('[ws] Client connected')
+    aliveClients.add(ws)
+
+    ws.on('pong', () => {
+      aliveClients.add(ws)
+    })
 
     ws.on('message', (data) => {
       try {
@@ -61,6 +85,7 @@ export function setupWebSocket(server: Server): WebSocketServer {
     })
 
     ws.on('close', () => {
+      aliveClients.delete(ws)
       clients.delete(ws)
       broadcastPresence()
       console.log('[ws] Client disconnected')
