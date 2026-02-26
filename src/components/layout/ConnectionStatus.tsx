@@ -36,8 +36,11 @@ const statusConfig: Record<Status, {
 export function ConnectionStatus() {
   const status = useConnectionStore((s) => s.status)
   const agents = useConnectionStore((s) => s.agents)
+  const reconnect = useConnectionStore((s) => s.reconnect)
   const config = statusConfig[status]
   const Icon = config.icon
+
+  const canReconnect = status !== 'connected' && reconnect
 
   if (!HAS_SERVER) return null
 
@@ -47,7 +50,12 @@ export function ConnectionStatus() {
         <TooltipTrigger asChild>
           <Badge
             variant="outline"
-            className={cn('gap-1.5 py-0.5 pl-1.5 pr-2 text-[11px] font-medium cursor-default select-none', config.badgeClass)}
+            className={cn(
+              'gap-1.5 py-0.5 pl-1.5 pr-2 text-[11px] font-medium select-none',
+              canReconnect ? 'cursor-pointer hover:opacity-80 active:scale-95 transition-all' : 'cursor-default',
+              config.badgeClass,
+            )}
+            onClick={canReconnect ? reconnect : undefined}
           >
             {config.dotClass ? (
               <span className={cn('inline-flex size-1.5 rounded-full shrink-0', config.dotClass)} />
@@ -59,8 +67,8 @@ export function ConnectionStatus() {
         </TooltipTrigger>
         <TooltipContent>
           {status === 'connected' && 'Connected to server'}
-          {status === 'disconnected' && 'Disconnected from server'}
-          {status === 'reconnecting' && 'Attempting to reconnect...'}
+          {status === 'disconnected' && 'Click to reconnect'}
+          {status === 'reconnecting' && 'Reconnecting... click to retry now'}
         </TooltipContent>
       </Tooltip>
 
