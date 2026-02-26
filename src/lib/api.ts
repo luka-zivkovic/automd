@@ -13,7 +13,9 @@ export const API_BASE = HAS_SERVER
 export const WS_BASE = HAS_SERVER
   ? (explicitServer
       ? explicitServer.replace(/^http/, 'ws') + '/ws'
-      : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`)
+      : typeof window !== 'undefined'
+        ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
+        : '')
   : ''
 
 export type ApiResult<T = unknown> =

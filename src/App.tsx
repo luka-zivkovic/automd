@@ -76,11 +76,11 @@ function App() {
             await new Promise((r) => setTimeout(r, delay))
             continue
           }
-          // All retries exhausted
+          // All retries exhausted — server unreachable
           if (useAuthStore.getState().token) {
             useAuthStore.getState().setStatus('authenticated')
           } else {
-            useAuthStore.getState().setStatus('needs-setup')
+            useAuthStore.getState().setStatus('unauthenticated')
           }
         }
       }
