@@ -22,8 +22,15 @@ export type ApiResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; error: string; status?: number }
 
-export async function apiFetch<T = unknown>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
+export async function apiFetch<T = unknown>(
+  path: string,
+  options?: RequestInit & { timeoutMs?: number },
+): Promise<ApiResult<T>> {
   if (!API_BASE) return { ok: false, error: 'No server configured' }
+
+  const timeoutMs = options?.timeoutMs ?? 10_000
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
     const token = useAuthStore.getState().token
@@ -41,6 +48,7 @@ export async function apiFetch<T = unknown>(path: string, options?: RequestInit)
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
+      signal: controller.signal,
     })
 
     if (res.status === 401) {
@@ -60,6 +68,11 @@ export async function apiFetch<T = unknown>(path: string, options?: RequestInit)
     const data = await res.json()
     return { ok: true, data }
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return { ok: false, error: 'Request timed out' }
+    }
     return { ok: false, error: err instanceof Error ? err.message : 'Network error' }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }

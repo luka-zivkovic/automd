@@ -25,6 +25,7 @@ export function useServerSync() {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptRef = useRef(0)
   const mountedRef = useRef(true)
+  const hasLoadedOnceRef = useRef(false)
   const confirmedMarkdownRef = useRef<Map<string, string>>(new Map())
   const saveDebouncerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -38,8 +39,11 @@ export function useServerSync() {
     mountedRef.current = true
 
     // --- 1. Initial fetch: load files + projects from server ---
-    async function loadFromServer() {
-      useConnectionStore.getState().setLoading(true)
+    // background=true skips skeleton (used on reconnect when data already loaded)
+    async function loadFromServer(background = false) {
+      if (!background) {
+        useConnectionStore.getState().setLoading(true)
+      }
       useConnectionStore.getState().setError(null)
 
       const [filesResult, projectsResult] = await Promise.all([
@@ -50,12 +54,14 @@ export function useServerSync() {
       if (!mountedRef.current) return
 
       if (!filesResult.ok) {
-        useConnectionStore.getState().setLoading(false)
+        if (!background) {
+          useConnectionStore.getState().setLoading(false)
+        }
         useConnectionStore.getState().setError(filesResult.error)
         toast.error('Failed to load boards from server', {
           id: 'load-error',
           description: filesResult.error,
-          action: { label: 'Retry', onClick: () => loadFromServer() },
+          action: { label: 'Retry', onClick: () => loadFromServer(background) },
         })
         return
       }
@@ -94,10 +100,26 @@ export function useServerSync() {
         queueMicrotask(() => { isServerUpdateRef.current = false })
       }
 
-      useConnectionStore.getState().setLoading(false)
+      if (!background) {
+        useConnectionStore.getState().setLoading(false)
+      }
+      hasLoadedOnceRef.current = true
     }
 
     loadFromServer()
+
+    // Safety net: never show skeleton for more than 15 seconds
+    const skeletonSafetyTimeout = setTimeout(() => {
+      if (useConnectionStore.getState().isLoading) {
+        useConnectionStore.getState().setLoading(false)
+        useConnectionStore.getState().setError('Server is taking too long to respond')
+        toast.error('Server unreachable', {
+          id: 'load-timeout',
+          description: 'Could not connect to server. You can retry or continue offline.',
+          action: { label: 'Retry', onClick: () => loadFromServer(false) },
+        })
+      }
+    }, 15_000)
 
     // --- 2. WebSocket: real-time updates + presence ---
     function connectWs() {
@@ -121,7 +143,8 @@ export function useServerSync() {
         }))
 
         // Re-fetch to catch events missed during disconnection
-        loadFromServer()
+        // Use background mode if data already loaded (don't flash skeleton)
+        loadFromServer(hasLoadedOnceRef.current)
       }
 
       ws.onmessage = (event) => {
@@ -352,6 +375,7 @@ export function useServerSync() {
       mountedRef.current = false
       unsubMarkdown()
       unsubUsername()
+      clearTimeout(skeletonSafetyTimeout)
       if (saveDebouncerRef.current) {
         clearTimeout(saveDebouncerRef.current)
         saveDebouncerRef.current = null
