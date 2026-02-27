@@ -70,15 +70,15 @@ function App() {
                 headers: { 'Authorization': `Bearer ${storedToken}` },
                 signal: meController.signal,
               })
-              clearTimeout(meTimeoutId)
               if (meRes.ok) {
                 const me = await meRes.json()
                 useAuthStore.getState().setAuth(storedToken, me.email)
                 return
               }
             } catch {
-              clearTimeout(meTimeoutId)
               throw new Error('auth/me timed out')
+            } finally {
+              clearTimeout(meTimeoutId)
             }
           }
 

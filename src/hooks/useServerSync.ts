@@ -61,7 +61,7 @@ export function useServerSync() {
         toast.error('Failed to load boards from server', {
           id: 'load-error',
           description: filesResult.error,
-          action: { label: 'Retry', onClick: () => loadFromServer(background) },
+          action: { label: 'Retry', onClick: () => loadFromServer(false) },
         })
         return
       }
