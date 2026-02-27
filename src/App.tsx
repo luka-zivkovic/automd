@@ -39,10 +39,15 @@ function App() {
       return
     }
 
-    async function checkAuth(retries = 5, delay = 1000) {
+    async function checkAuth(retries = 3, delay = 1000) {
       for (let attempt = 0; attempt <= retries; attempt++) {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
         try {
-          const res = await fetch(`${API_BASE}/auth/status`)
+          const res = await fetch(`${API_BASE}/auth/status`, {
+            signal: controller.signal,
+          })
+          clearTimeout(timeoutId)
           const data = await res.json()
 
           if (!data.setupComplete) {
@@ -58,20 +63,30 @@ function App() {
           // Auth enabled — validate existing token
           const storedToken = useAuthStore.getState().token
           if (storedToken) {
-            const meRes = await fetch(`${API_BASE}/auth/me`, {
-              headers: { 'Authorization': `Bearer ${storedToken}` },
-            })
-            if (meRes.ok) {
-              const me = await meRes.json()
-              useAuthStore.getState().setAuth(storedToken, me.email)
-              return
+            const meController = new AbortController()
+            const meTimeoutId = setTimeout(() => meController.abort(), 5000)
+            try {
+              const meRes = await fetch(`${API_BASE}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${storedToken}` },
+                signal: meController.signal,
+              })
+              if (meRes.ok) {
+                const me = await meRes.json()
+                useAuthStore.getState().setAuth(storedToken, me.email)
+                return
+              }
+            } catch {
+              throw new Error('auth/me timed out')
+            } finally {
+              clearTimeout(meTimeoutId)
             }
           }
 
           useAuthStore.getState().clearAuth()
           return
         } catch {
-          // Server unreachable — retry if we have attempts left
+          clearTimeout(timeoutId)
+          // Server unreachable or timed out — retry if we have attempts left
           if (attempt < retries) {
             await new Promise((r) => setTimeout(r, delay))
             continue
