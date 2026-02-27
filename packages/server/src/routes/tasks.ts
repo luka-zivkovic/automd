@@ -7,6 +7,8 @@ import {
   addTask,
   updateTaskContent,
   updateTaskMetadata,
+  updateAcceptanceCriteria,
+  updateLearnings,
   deleteTask,
 } from '@automd/shared'
 import type { TaskMetadata } from '@automd/shared'
@@ -107,7 +109,7 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
     return
   }
 
-  const { action, content, metadata, displayContent, targetColumnId, targetIndex } = req.body
+  const { action, content, metadata, displayContent, targetColumnId, targetIndex, acceptanceCriteria, learnings } = req.body
   const { fileId, taskId } = req.params
 
   try {
@@ -145,6 +147,12 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
             return { status: 400 as const, error: 'displayContent and metadata required' }
           }
           newAst = updateTaskMetadata(ast, taskId, displayContent, metadata as TaskMetadata)
+          break
+        case 'updateAcceptanceCriteria':
+          newAst = updateAcceptanceCriteria(ast, taskId, acceptanceCriteria ?? null)
+          break
+        case 'updateLearnings':
+          newAst = updateLearnings(ast, taskId, learnings ?? null)
           break
         default:
           return { status: 400 as const, error: `Unknown action: ${action}` }

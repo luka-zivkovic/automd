@@ -1,5 +1,5 @@
 import { toString } from 'mdast-util-to-string'
-import type { Root, Heading, List, ListItem, RootContent } from 'mdast'
+import type { Root, Heading, List, ListItem, RootContent, Blockquote } from 'mdast'
 import type { Task, Column } from './types.js'
 import { parseMetadata } from './metadata-parser.js'
 
@@ -136,6 +136,8 @@ function extractSubtasksFromList(
       parentHeadingId,
       depth,
       description,
+      acceptanceCriteria: null,
+      learnings: null,
       children,
     })
   }
@@ -186,10 +188,14 @@ function extractHeadingTask(
   const { checked, text: cleanText } = parseHeadingCheckbox(rawText)
   const { metadata, displayContent } = parseMetadata(cleanText)
 
-  // Collect description paragraphs and subtask lists after the heading
+  // Collect description paragraphs, acceptance criteria blockquotes,
+  // learnings (H3 section), and subtask lists after the heading
   const descriptionParts: string[] = []
+  const acParts: string[] = []
+  const learningsParts: string[] = []
   const subtasks: Task[] = []
   let consumed = 0
+  let inLearnings = false
 
   for (let i = startIndex + 1; i < children.length; i++) {
     const node = children[i]
@@ -198,12 +204,37 @@ function extractHeadingTask(
     if (node.type === 'heading') {
       const d = (node as Heading).depth
       if (d === structure.columnDepth || d === structure.taskDepth) break
+
+      // H3 "Learnings" section
+      if (d === 3) {
+        const headingText = toString(node as Heading).toLowerCase()
+        if (headingText === 'learnings') {
+          inLearnings = true
+          consumed++
+          continue
+        }
+        // Any other H3 exits learnings mode
+        inLearnings = false
+      }
     }
 
     consumed++
 
-    if (node.type === 'paragraph') {
+    if (inLearnings) {
+      // Everything inside the ### Learnings section becomes learnings text
+      if (node.type === 'list') {
+        for (const item of (node as List).children) {
+          if (item.type === 'listItem') {
+            learningsParts.push(toString(item))
+          }
+        }
+      } else if (node.type === 'paragraph') {
+        learningsParts.push(toString(node))
+      }
+    } else if (node.type === 'paragraph') {
       descriptionParts.push(toString(node))
+    } else if (node.type === 'blockquote') {
+      acParts.push(toString(node as Blockquote))
     } else if (node.type === 'list') {
       // Extract subtasks from checkbox items in the list
       subtasks.push(
@@ -215,6 +246,10 @@ function extractHeadingTask(
 
   const description =
     descriptionParts.length > 0 ? descriptionParts.join('\n') : null
+  const acceptanceCriteria =
+    acParts.length > 0 ? acParts.join('\n') : null
+  const learnings =
+    learningsParts.length > 0 ? learningsParts.join('\n') : null
 
   return {
     task: {
@@ -227,6 +262,8 @@ function extractHeadingTask(
       parentHeadingId: columnId,
       depth: 0,
       description,
+      acceptanceCriteria,
+      learnings,
       children: subtasks,
     },
     consumed,

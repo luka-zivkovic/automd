@@ -3,6 +3,7 @@ import {
   annotateIds,
   createIdCache,
   extractTasksAndColumns,
+  extractFrontmatter,
 } from '@automd/shared'
 import type { IdCache } from '@automd/shared'
 
@@ -26,7 +27,8 @@ export function parseBoard(markdown: string, boardId?: string) {
 
   const ast = annotateIds(parseMarkdown(markdown), cache)
   const extracted = extractTasksAndColumns(ast)
-  return { ast, cache, ...extracted }
+  const meta = extractFrontmatter(ast)
+  return { ast, cache, meta, ...extracted }
 }
 
 export function invalidateBoardCache(boardId: string) {

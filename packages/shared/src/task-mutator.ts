@@ -5,6 +5,7 @@ import type {
   List,
   ListItem,
   Paragraph,
+  Blockquote,
   Text,
   Content,
   RootContent,
@@ -496,6 +497,149 @@ export function updateTaskDescription(
     }
   }
 
+  return cloned
+}
+
+export function updateAcceptanceCriteria(
+  ast: Root,
+  taskId: string,
+  criteria: string | null
+): Root {
+  const cloned = structuredClone(ast)
+  const structure = detectHeadingStructure(cloned)
+
+  if (structure.mode === 'heading-tasks') {
+    const taskHeading = findTaskHeadingById(cloned, taskId)
+    if (!taskHeading) return cloned
+
+    const blockEnd = findTaskBlockEnd(cloned, taskHeading.rootIndex)
+
+    // Remove existing blockquotes in the task block
+    const toRemove: number[] = []
+    for (let i = taskHeading.rootIndex + 1; i < blockEnd; i++) {
+      if (cloned.children[i].type === 'blockquote') {
+        toRemove.push(i)
+      }
+    }
+    for (let j = toRemove.length - 1; j >= 0; j--) {
+      cloned.children.splice(toRemove[j], 1)
+    }
+
+    // Insert new blockquote after description paragraphs (before lists)
+    if (criteria && criteria.trim()) {
+      // Find insertion point: after heading and paragraphs, before lists
+      let insertAt = taskHeading.rootIndex + 1
+      const newBlockEnd = findTaskBlockEnd(cloned, taskHeading.rootIndex)
+      for (let i = taskHeading.rootIndex + 1; i < newBlockEnd; i++) {
+        if (cloned.children[i].type === 'paragraph') {
+          insertAt = i + 1
+        } else {
+          break
+        }
+      }
+
+      const blockquote: Blockquote = {
+        type: 'blockquote',
+        children: criteria
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => ({
+            type: 'paragraph' as const,
+            children: [{ type: 'text', value: line } as Text],
+          })),
+      }
+      cloned.children.splice(insertAt, 0, blockquote as RootContent)
+    }
+
+    return cloned
+  }
+
+  // Checkbox-tasks mode: AC not supported on list item tasks
+  return cloned
+}
+
+export function updateLearnings(
+  ast: Root,
+  taskId: string,
+  learnings: string | null
+): Root {
+  const cloned = structuredClone(ast)
+  const structure = detectHeadingStructure(cloned)
+
+  if (structure.mode === 'heading-tasks') {
+    const taskHeading = findTaskHeadingById(cloned, taskId)
+    if (!taskHeading) return cloned
+
+    const blockEnd = findTaskBlockEnd(cloned, taskHeading.rootIndex)
+
+    // Find and remove existing ### Learnings section (heading + content until next heading or block end)
+    let learningsStart: number | null = null
+    let learningsEnd: number | null = null
+    for (let i = taskHeading.rootIndex + 1; i < blockEnd; i++) {
+      const node = cloned.children[i]
+      if (node.type === 'heading' && (node as Heading).depth === 3) {
+        const text = toString(node as Heading).toLowerCase()
+        if (text === 'learnings') {
+          learningsStart = i
+          // Find end of learnings section (next heading or block end)
+          learningsEnd = blockEnd
+          for (let j = i + 1; j < blockEnd; j++) {
+            if (cloned.children[j].type === 'heading') {
+              learningsEnd = j
+              break
+            }
+          }
+          break
+        }
+      }
+    }
+
+    if (learningsStart !== null && learningsEnd !== null) {
+      cloned.children.splice(learningsStart, learningsEnd - learningsStart)
+    }
+
+    // Insert new ### Learnings section at end of task block
+    if (learnings && learnings.trim()) {
+      const newBlockEnd = findTaskBlockEnd(cloned, taskHeading.rootIndex)
+
+      const learningsHeading: Heading = {
+        type: 'heading',
+        depth: 3,
+        children: [{ type: 'text', value: 'Learnings' } as Text],
+      }
+
+      const learningsList: List = {
+        type: 'list',
+        ordered: false,
+        spread: false,
+        children: learnings
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => ({
+            type: 'listItem' as const,
+            spread: false,
+            checked: null,
+            children: [
+              {
+                type: 'paragraph' as const,
+                children: [{ type: 'text', value: line } as Text],
+              },
+            ],
+          })),
+      }
+
+      cloned.children.splice(
+        newBlockEnd,
+        0,
+        learningsHeading as RootContent,
+        learningsList as RootContent
+      )
+    }
+
+    return cloned
+  }
+
+  // Checkbox-tasks mode: learnings not supported on list item tasks
   return cloned
 }
 

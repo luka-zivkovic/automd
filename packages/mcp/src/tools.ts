@@ -58,10 +58,10 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('create_board', {
     title: 'Create Board',
-    description: 'Create a new board. Optionally provide initial markdown content. Use # (H1) headings for columns and ## (H2) headings for tasks (e.g. "# Todo\\n\\n## Task 1\\n\\n## [ ] Task 2\\n\\n# Done\\n\\n## [x] Task 3"). Subtasks are GFM checkboxes (- [ ] / - [x]) under task headings.',
+    description: 'Create a new board. Optionally provide initial markdown content. Format: YAML frontmatter (---) for board metadata, # (H1) for columns, ## (H2) for tasks. Plain paragraphs under tasks = description. Blockquotes (>) under tasks = acceptance criteria. Subtasks are GFM checkboxes (- [ ] / - [x]).',
     inputSchema: {
       name: z.string().describe('Name for the new board'),
-      markdown: z.string().optional().describe('Initial markdown content. Use # (H1) headings for column names and ## (H2) headings for tasks. Optional checkbox prefix on tasks: ## [ ] or ## [x]. Subtasks use - [ ] / - [x] under task headings'),
+      markdown: z.string().optional().describe('Initial markdown content. Start with YAML frontmatter (board:, description:). Use # for columns, ## for tasks. Paragraphs = description, blockquotes (>) = acceptance criteria, checkboxes = subtasks'),
       projectId: z.string().optional().describe('Project ID to add the board to (optional)'),
     },
   }, async ({ name, markdown, projectId }) => {
@@ -301,6 +301,46 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  server.registerTool('update_acceptance_criteria', {
+    title: 'Update Acceptance Criteria',
+    description: 'Update a task\'s acceptance criteria (rendered as blockquotes in markdown). These are testable conditions that define "done" for a task. Each line becomes a separate blockquote line.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      taskId: z.string().describe('The task ID'),
+      acceptanceCriteria: z.string().nullable().describe('Acceptance criteria text. Each line becomes a blockquote entry. Pass null to remove AC.'),
+    },
+  }, async ({ boardId, taskId, acceptanceCriteria }) => {
+    try {
+      const result = await api.updateTask(boardId, taskId, {
+        action: 'updateAcceptanceCriteria',
+        acceptanceCriteria,
+      })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('update_learnings', {
+    title: 'Update Learnings',
+    description: 'Update a completed task\'s learnings section (rendered as ### Learnings with a bullet list in markdown). Use this to record decisions, insights, and pitfalls discovered while completing a task. Supports #label tags for cross-referencing.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      taskId: z.string().describe('The task ID'),
+      learnings: z.string().nullable().describe('Learnings text. Each line becomes a bullet point under ### Learnings. Use #tags for keywords (e.g. "PKCE flow required for SPA #oauth #security"). Pass null to remove.'),
+    },
+  }, async ({ boardId, taskId, learnings }) => {
+    try {
+      const result = await api.updateTask(boardId, taskId, {
+        action: 'updateLearnings',
+        learnings,
+      })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   // ─── Bulk Tools ───────────────────────────────────────────────────
 
   server.registerTool('bulk_update_tasks', {
@@ -311,7 +351,7 @@ export function registerTools(server: McpServer) {
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making these changes (tagged as built-by)'),
       updates: z.array(z.object({
         taskId: z.string().describe('The task ID'),
-        action: z.enum(['toggle', 'move', 'updateContent', 'updateMetadata']).describe('The action to perform'),
+        action: z.enum(['toggle', 'move', 'updateContent', 'updateMetadata', 'updateAcceptanceCriteria', 'updateLearnings']).describe('The action to perform'),
         content: z.string().optional().describe('New content (for updateContent)'),
         targetColumnId: z.string().optional().describe('Target column (for move)'),
         targetIndex: z.number().optional().describe('Target index (for move)'),
@@ -403,6 +443,87 @@ export function registerTools(server: McpServer) {
           }
         } catch (err) {
           // Skip boards that fail to load, continue searching others
+          console.error(`[mcp] Failed to search board ${boardSummary.id}:`, err)
+        }
+      }
+
+      return json({ count: results.length, results })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('search_context', {
+    title: 'Search Context',
+    description: 'Search for institutional knowledge across all boards. Searches task descriptions, acceptance criteria, and learnings — not just titles. Use this to find relevant context before starting work on a task (e.g. "what do we know about auth?" or "what was learned about pricing?").',
+    inputSchema: {
+      query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content'),
+      label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
+      completedOnly: z.boolean().optional().describe('Only return completed tasks (default: false). Useful for finding learnings from done work.'),
+    },
+  }, async ({ query, label, completedOnly }) => {
+    try {
+      const boards = await api.listFiles()
+      const results: Array<{
+        boardId: string
+        boardName: string
+        taskId: string
+        taskTitle: string
+        taskLabels: string[]
+        column: string
+        checked: boolean | null
+        description: string | null
+        acceptanceCriteria: string | null
+        learnings: string | null
+      }> = []
+
+      const q = query?.toLowerCase()
+
+      for (const boardSummary of boards) {
+        try {
+          const board = await api.getFile(boardSummary.id)
+          for (const column of board.columns) {
+            for (const task of column.tasks) {
+              if (completedOnly && !task.checked) continue
+
+              // Build searchable text from all fields
+              const searchable = [
+                task.content,
+                task.description,
+                task.acceptanceCriteria,
+                task.learnings,
+              ].filter(Boolean).join(' ').toLowerCase()
+
+              let match = true
+              if (q && !searchable.includes(q)) match = false
+              if (label) {
+                // Check task labels AND inline #tags in learnings
+                const hasLabel = task.metadata.labels.includes(label)
+                const hasInlineLabelTag = searchable.includes(`#${label.toLowerCase()}`)
+                if (!hasLabel && !hasInlineLabelTag) match = false
+              }
+
+              // Only include results that have some knowledge content
+              const hasContext = task.description || task.acceptanceCriteria || task.learnings
+              if (!hasContext) match = false
+
+              if (match) {
+                results.push({
+                  boardId: boardSummary.id,
+                  boardName: boardSummary.name,
+                  taskId: task.id,
+                  taskTitle: task.displayContent,
+                  taskLabels: task.metadata.labels,
+                  column: column.title,
+                  checked: task.checked,
+                  description: task.description,
+                  acceptanceCriteria: task.acceptanceCriteria,
+                  learnings: task.learnings,
+                })
+              }
+            }
+          }
+        } catch (err) {
           console.error(`[mcp] Failed to search board ${boardSummary.id}:`, err)
         }
       }
