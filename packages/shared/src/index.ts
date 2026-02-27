@@ -4,6 +4,7 @@ export type {
   Task,
   Column,
   DocumentState,
+  BoardMeta,
   IdCache,
   BoardFile,
   Project,
@@ -12,6 +13,9 @@ export type {
 // Parser & Serializer
 export { parseMarkdown } from './parser.js'
 export { serializeAst } from './serializer.js'
+
+// Frontmatter
+export { extractFrontmatter, setFrontmatter, removeFrontmatter } from './frontmatter-parser.js'
 
 // ID Annotation
 export { createIdCache, annotateIds } from './id-annotator.js'
@@ -36,6 +40,8 @@ export {
   updateTaskContent,
   updateTaskMetadata,
   updateTaskDescription,
+  updateAcceptanceCriteria,
+  updateLearnings,
   deleteTask,
   addSubtask,
   toggleSubtask,

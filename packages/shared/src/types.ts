@@ -21,6 +21,8 @@ export interface Task {
   parentHeadingId: string
   depth: number
   description: string | null
+  acceptanceCriteria: string | null
+  learnings: string | null
   children: Task[]
 }
 
@@ -30,12 +32,21 @@ export interface Column {
   tasks: Task[]
 }
 
+export interface BoardMeta {
+  board?: string
+  project?: string
+  projectId?: string
+  description?: string
+  tags?: string[]
+}
+
 export interface DocumentState {
   markdown: string
   ast: Root | null
   tasks: Task[]
   columns: Column[]
   taskMap: Map<string, Task>
+  meta: BoardMeta | null
 }
 
 export interface IdCache {
@@ -58,4 +69,5 @@ export interface Project {
   color: string
   fileIds: string[]
   createdAt: number
+  markdown?: string
 }

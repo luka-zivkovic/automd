@@ -45,7 +45,7 @@ filesRouter.get('/:id', (req, res, next) => {
       return
     }
 
-    const { columns, tasks } = parseBoard(file.markdown, req.params.id)
+    const { columns, tasks, meta } = parseBoard(file.markdown, req.params.id)
 
     res.setHeader('ETag', `"${file.updatedAt}"`)
     res.json({
@@ -53,6 +53,7 @@ filesRouter.get('/:id', (req, res, next) => {
       name: file.name,
       projectId: file.projectId,
       markdown: file.markdown,
+      meta,
       columns,
       tasks,
       taskCount: tasks.length,
