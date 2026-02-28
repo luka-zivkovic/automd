@@ -687,6 +687,80 @@ export function deleteTask(ast: Root, taskId: string): Root {
   return cloned
 }
 
+// ─── Cross-Board Task Movement ──────────────────────────────────────
+
+/**
+ * Extract a task's full block (H2 heading + description + AC + subtasks + learnings)
+ * from the AST. Returns the extracted nodes and the AST with the task removed.
+ * Returns null if the task is not found.
+ */
+export function extractTaskBlock(
+  ast: Root,
+  taskId: string
+): { extractedNodes: RootContent[]; modifiedAst: Root } | null {
+  const cloned = structuredClone(ast)
+  const structure = detectHeadingStructure(cloned)
+
+  if (structure.mode === 'heading-tasks') {
+    const taskHeading = findTaskHeadingById(cloned, taskId)
+    if (!taskHeading) return null
+
+    const blockEnd = findTaskBlockEnd(cloned, taskHeading.rootIndex)
+    const extractedNodes = cloned.children.splice(
+      taskHeading.rootIndex,
+      blockEnd - taskHeading.rootIndex
+    )
+
+    return { extractedNodes, modifiedAst: cloned }
+  }
+
+  return null
+}
+
+/**
+ * Insert task block nodes into a target board at the end of a column.
+ * If targetColumnId is provided, inserts there; otherwise uses first column.
+ * Falls back to appending at document end if no columns found.
+ */
+export function insertTaskBlock(
+  ast: Root,
+  nodes: RootContent[],
+  targetColumnId?: string
+): Root {
+  const cloned = structuredClone(ast)
+  const structure = detectHeadingStructure(cloned)
+
+  if (structure.mode === 'heading-tasks' || structure.columnDepth !== null) {
+    let columnHeading: { node: Heading; rootIndex: number } | null = null
+
+    if (targetColumnId) {
+      columnHeading = findColumnHeadingById(cloned, targetColumnId)
+    }
+
+    if (!columnHeading) {
+      // Find first H1 column
+      const depth = structure.columnDepth ?? 1
+      for (let i = 0; i < cloned.children.length; i++) {
+        const child = cloned.children[i]
+        if (child.type === 'heading' && (child as Heading).depth === depth) {
+          columnHeading = { node: child as Heading, rootIndex: i }
+          break
+        }
+      }
+    }
+
+    if (columnHeading) {
+      const columnEnd = findColumnBlockEnd(cloned, columnHeading.rootIndex)
+      cloned.children.splice(columnEnd, 0, ...nodes)
+      return cloned
+    }
+  }
+
+  // No columns found — append at end
+  cloned.children.push(...nodes)
+  return cloned
+}
+
 // ─── Subtask Mutations (heading-tasks mode) ──────────────────────────
 
 export function addSubtask(

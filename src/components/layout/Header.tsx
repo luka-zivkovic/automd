@@ -7,14 +7,15 @@ import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut } from 'lucide-react'
+import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, ChevronLeft, Activity, LogOut, BookOpen, Archive, Inbox } from 'lucide-react'
+import { apiFetch, HAS_SERVER } from '@/lib/api'
+import type { BoardFile } from '@/lib/markdown/types'
 import { useActivityStore } from '@/store/activity-store'
 import { useAuthStore } from '@/store/auth-store'
 import { UserBadge } from '@/components/settings/UserBadge'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { ApiKeyManager } from '@/components/settings/ApiKeyManager'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
-import { apiFetch, HAS_SERVER } from '@/lib/api'
 
 export function Header() {
   const tasks = useDocumentStore((s) => s.tasks)
@@ -35,6 +36,34 @@ export function Header() {
   const activeProject = activeFile?.projectId
     ? projects.find((p) => p.id === activeFile.projectId)
     : null
+
+  const setActiveFile = useFilesStore((s) => s.setActiveFile)
+  const addOrUpdateFile = useFilesStore((s) => s.addOrUpdateFile)
+
+  // Detect if active file is an archive/backlog board
+  const parentBoard = activeFile
+    ? files.find((f) => f.archiveBoardId === activeFileId || f.backlogBoardId === activeFileId)
+    : null
+  const isArchiveView = parentBoard ? parentBoard.archiveBoardId === activeFileId : false
+  const isBacklogView = parentBoard ? parentBoard.backlogBoardId === activeFileId : false
+
+  async function navigateToLinkedBoard(type: 'archive' | 'backlog') {
+    if (!HAS_SERVER || !activeFile) return
+    const result = await apiFetch<BoardFile>(`/files/${activeFile.id}/${type}`, { method: 'POST' })
+    if (!result.ok) return
+    const board = result.data
+    const fullResult = await apiFetch<{ markdown?: string; archiveBoardId?: string | null; backlogBoardId?: string | null }>(`/files/${board.id}`)
+    if (!fullResult.ok) return
+    const fullBoard: BoardFile = {
+      ...board,
+      markdown: fullResult.data?.markdown ?? '',
+      archiveBoardId: fullResult.data?.archiveBoardId ?? null,
+      backlogBoardId: fullResult.data?.backlogBoardId ?? null,
+    }
+    addOrUpdateFile(fullBoard)
+    addOrUpdateFile({ ...activeFile, [`${type}BoardId`]: board.id } as BoardFile)
+    setActiveFile(board.id)
+  }
 
   const activityOpen = useActivityStore((s) => s.isOpen)
   const setActivityOpen = useActivityStore((s) => s.setOpen)
@@ -86,20 +115,60 @@ export function Header() {
           {activeFile && (
             <>
               <div className="w-px h-4 bg-border" />
-              <div className="flex items-center gap-1.5 min-w-0 max-w-[280px]">
-                {activeProject && (
-                  <>
-                    <div className={`size-2 rounded-full shrink-0 ${getProjectColorClass(activeProject.color)}`} />
-                    <span className="text-sm font-medium text-muted-foreground truncate">
-                      {activeProject.name}
-                    </span>
-                    <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
-                  </>
-                )}
-                <span className="text-sm font-medium text-muted-foreground truncate">
-                  {activeFile.name}
-                </span>
-              </div>
+              {parentBoard ? (
+                /* Back-to-parent breadcrumb for archive/backlog views */
+                <div className="flex items-center gap-1.5 min-w-0 max-w-[360px]">
+                  <button
+                    className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors truncate"
+                    onClick={() => setActiveFile(parentBoard.id)}
+                  >
+                    <ChevronLeft className="size-3 shrink-0" />
+                    {parentBoard.name}
+                  </button>
+                  <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
+                  <span className="text-sm font-medium text-foreground truncate flex items-center gap-1">
+                    {isArchiveView && <Archive className="size-3 shrink-0" />}
+                    {isBacklogView && <Inbox className="size-3 shrink-0" />}
+                    {isArchiveView ? 'Archive' : 'Backlog'}
+                  </span>
+                </div>
+              ) : (
+                /* Normal breadcrumb with archive/backlog pills */
+                <div className="flex items-center gap-1.5 min-w-0 max-w-[400px]">
+                  {activeProject && (
+                    <>
+                      <div className={`size-2 rounded-full shrink-0 ${getProjectColorClass(activeProject.color)}`} />
+                      <span className="text-sm font-medium text-muted-foreground truncate">
+                        {activeProject.name}
+                      </span>
+                      <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
+                    </>
+                  )}
+                  <span className="text-sm font-medium text-muted-foreground truncate">
+                    {activeFile.name}
+                  </span>
+                  {HAS_SERVER && (
+                    <div className="flex items-center gap-1 ml-1.5 shrink-0">
+                      {activeFile.archiveBoardId && (
+                        <button
+                          className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-muted-foreground transition-colors"
+                          onClick={() => navigateToLinkedBoard('archive')}
+                        >
+                          <Archive className="size-3" />
+                          Archive
+                        </button>
+                      )}
+                      <button
+                        className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-muted-foreground transition-colors"
+                        onClick={() => navigateToLinkedBoard('backlog')}
+                      >
+                        <Inbox className="size-3" />
+                        Backlog
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -140,6 +209,20 @@ export function Header() {
               <TooltipContent>Sign out</TooltipContent>
             </Tooltip>
           )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => useUiStore.getState().setPromptsLibraryOpen(true)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <BookOpen className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>AI Prompts</TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>

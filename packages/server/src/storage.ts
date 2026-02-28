@@ -19,15 +19,19 @@ export class StorageError extends Error {
   }
 }
 
+interface ManifestEntry {
+  id: string
+  name: string
+  filename: string
+  projectId: string | null
+  createdAt: number
+  updatedAt: number
+  archiveBoardId?: string | null
+  backlogBoardId?: string | null
+}
+
 interface Manifest {
-  files: Array<{
-    id: string
-    name: string
-    filename: string
-    projectId: string | null
-    createdAt: number
-    updatedAt: number
-  }>
+  files: ManifestEntry[]
   projects: Project[]
 }
 
@@ -128,6 +132,8 @@ export function listFiles(): BoardFile[] {
         createdAt: f.createdAt,
         updatedAt: f.updatedAt,
         projectId: f.projectId,
+        archiveBoardId: f.archiveBoardId ?? null,
+        backlogBoardId: f.backlogBoardId ?? null,
       }
     })
   } catch (err) {
@@ -159,6 +165,8 @@ export function getFile(id: string): BoardFile | null {
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
       projectId: entry.projectId,
+      archiveBoardId: entry.archiveBoardId ?? null,
+      backlogBoardId: entry.backlogBoardId ?? null,
     }
   } catch (err) {
     if (err instanceof StorageError) throw err
@@ -202,6 +210,8 @@ export function createFile(
       createdAt: now,
       updatedAt: now,
       projectId: projectId ?? null,
+      archiveBoardId: null,
+      backlogBoardId: null,
     }
   } catch (err) {
     if (err instanceof StorageError) throw err
@@ -229,6 +239,8 @@ export function updateFileMarkdown(id: string, markdown: string): BoardFile | nu
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
       projectId: entry.projectId,
+      archiveBoardId: entry.archiveBoardId ?? null,
+      backlogBoardId: entry.backlogBoardId ?? null,
     }
   } catch (err) {
     if (err instanceof StorageError) throw err
@@ -283,6 +295,77 @@ export function deleteFile(id: string): boolean {
     if (err instanceof StorageError) throw err
     throw new StorageError(`Failed to delete file ${id}`, err)
   }
+}
+
+// ─── Archive Operations ─────────────────────────────────────────────
+
+export function setArchiveBoardId(boardId: string, archiveBoardId: string): void {
+  const manifest = readManifest()
+  const entry = manifest.files.find((f) => f.id === boardId)
+  if (entry) {
+    entry.archiveBoardId = archiveBoardId
+    writeManifest(manifest)
+  }
+}
+
+export function getOrCreateArchiveBoard(
+  boardId: string,
+  boardName: string,
+  createId: () => string,
+): BoardFile {
+  const manifest = readManifest()
+  const entry = manifest.files.find((f) => f.id === boardId)
+
+  // Return existing archive board if linked
+  if (entry?.archiveBoardId) {
+    const existing = getFile(entry.archiveBoardId)
+    if (existing) return existing
+  }
+
+  // Create new archive board
+  const archiveName = `${boardName} (Archive)`
+  const archiveMarkdown = `---\nboard: "${archiveName}"\narchiveFor: "${boardId}"\n---\n\n# Archived\n\n`
+  const archiveId = createId()
+  const archiveBoard = createFile(archiveId, archiveName, archiveMarkdown)
+
+  // Link archive board to source board
+  setArchiveBoardId(boardId, archiveId)
+
+  return archiveBoard
+}
+
+// ─── Backlog Operations ─────────────────────────────────────────────
+
+export function setBacklogBoardId(boardId: string, backlogBoardId: string): void {
+  const manifest = readManifest()
+  const entry = manifest.files.find((f) => f.id === boardId)
+  if (entry) {
+    entry.backlogBoardId = backlogBoardId
+    writeManifest(manifest)
+  }
+}
+
+export function getOrCreateBacklogBoard(
+  boardId: string,
+  boardName: string,
+  createId: () => string,
+): BoardFile {
+  const manifest = readManifest()
+  const entry = manifest.files.find((f) => f.id === boardId)
+
+  if (entry?.backlogBoardId) {
+    const existing = getFile(entry.backlogBoardId)
+    if (existing) return existing
+  }
+
+  const backlogName = `${boardName} (Backlog)`
+  const backlogMarkdown = `---\nboard: "${backlogName}"\nbacklogFor: "${boardId}"\n---\n\n# Backlog\n\n`
+  const backlogId = createId()
+  const backlogBoard = createFile(backlogId, backlogName, backlogMarkdown)
+
+  setBacklogBoardId(boardId, backlogId)
+
+  return backlogBoard
 }
 
 // ─── Project Operations ──────────────────────────────────────────────

@@ -1,14 +1,12 @@
-import { useState, useMemo } from 'react'
 import { useDocumentStore } from '@/store/document-store'
 import { useUiStore } from '@/store/ui-store'
 import { useFilteredColumns } from '@/hooks/useFilteredColumns'
 import { Progress } from '@/components/ui/progress'
-import { Button } from '@/components/ui/button'
 import { TaskGroup } from './TaskGroup'
 import { FilterBar } from '@/components/search/FilterBar'
 import { SplitView } from '@/components/editor/SplitView'
 import { MarkdownEditor } from '@/components/editor/MarkdownEditor'
-import { ClipboardList, Archive, Code2, X } from 'lucide-react'
+import { ClipboardList, Code2, X } from 'lucide-react'
 
 function SplitEditorToggle() {
   const showSplitEditor = useUiStore((s) => s.showSplitEditor)
@@ -29,26 +27,8 @@ function SplitEditorToggle() {
 export function ChecklistView() {
   const showSplitEditor = useUiStore((s) => s.showSplitEditor)
   const columns = useDocumentStore((s) => s.columns)
-  const [showArchived, setShowArchived] = useState(false)
 
-  const archivedCount = useMemo(
-    () => columns.flatMap((c) => c.tasks).filter((t) => t.metadata.archived).length,
-    [columns]
-  )
-
-  const archiveFilteredColumns = useMemo(
-    () =>
-      showArchived
-        ? columns
-        : columns.map((col) => ({
-            ...col,
-            tasks: col.tasks.filter((t) => !t.metadata.archived),
-          })),
-    [columns, showArchived]
-  )
-
-  // Apply search/filter-store filters on top of archive filtering
-  const filteredColumns = useFilteredColumns(archiveFilteredColumns)
+  const filteredColumns = useFilteredColumns(columns)
 
   const allTasks = filteredColumns.flatMap((c) => c.tasks)
   const totalCompleted = allTasks.filter((t) => t.checked === true).length
@@ -99,21 +79,6 @@ export function ChecklistView() {
               </div>
               <Progress value={overallPercent} className="h-2" />
             </div>
-
-            {/* Archived toggle */}
-            {archivedCount > 0 && (
-              <div className="mb-4">
-                <Button
-                  variant={showArchived ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setShowArchived(!showArchived)}
-                  className="text-xs text-muted-foreground"
-                >
-                  <Archive className="size-3" />
-                  {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
-                </Button>
-              </div>
-            )}
 
             {/* Task groups */}
             <div className="space-y-4 stagger-enter">

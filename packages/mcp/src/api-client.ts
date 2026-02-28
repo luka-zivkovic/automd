@@ -105,7 +105,13 @@ async function request(path: string, options?: RequestInit) {
 
 export const api = {
   // Files
-  listFiles: () => request('/api/files'),
+  listFiles: (includeArchived?: boolean, includeBacklog?: boolean) => {
+    const params = new URLSearchParams()
+    if (includeArchived) params.set('includeArchived', 'true')
+    if (includeBacklog) params.set('includeBacklog', 'true')
+    const qs = params.toString()
+    return request(`/api/files${qs ? '?' + qs : ''}`)
+  },
   getFile: (id: string) => request(`/api/files/${id}`),
   createFile: (name: string, markdown?: string, projectId?: string) =>
     request('/api/files', {
@@ -134,6 +140,11 @@ export const api = {
     }),
   deleteTask: (fileId: string, taskId: string) =>
     request(`/api/files/${fileId}/tasks/${taskId}`, { method: 'DELETE' }),
+  moveTaskToBoard: (fileId: string, taskId: string, targetFileId: string, targetColumnId?: string) =>
+    request(`/api/files/${fileId}/tasks/${taskId}/move-to/${targetFileId}`, {
+      method: 'POST',
+      body: JSON.stringify({ targetColumnId }),
+    }),
 
   // Columns
   renameColumn: (fileId: string, columnId: string, title: string) =>

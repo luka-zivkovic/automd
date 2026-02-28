@@ -11,6 +11,7 @@ import { FileDropZone } from '@/components/editor/FileDropZone'
 import { TaskDetailPanel } from '@/components/detail/TaskDetailPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { CommandPalette } from '@/components/search/CommandPalette'
+import { PromptsLibrary } from '@/components/prompts/PromptsLibrary'
 import { LoadingSkeleton } from '@/components/layout/LoadingSkeleton'
 import { ActivityFeed } from '@/components/activity/ActivityFeed'
 import { UpdateBanner } from '@/components/layout/UpdateBanner'
@@ -145,6 +146,7 @@ function App() {
         </div>
         <Toaster position="bottom-right" />
         <CommandPalette />
+        <PromptsLibrary />
       </FileDropZone>
     </TooltipProvider>
   )

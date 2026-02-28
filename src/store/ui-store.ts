@@ -19,6 +19,9 @@ interface UiStore {
   commandPaletteOpen: boolean
   setCommandPaletteOpen: (open: boolean) => void
 
+  promptsLibraryOpen: boolean
+  setPromptsLibraryOpen: (open: boolean) => void
+
   showSplitEditor: boolean
   toggleSplitEditor: () => void
 }
@@ -40,6 +43,9 @@ export const useUiStore = create<UiStore>()(
 
       commandPaletteOpen: false,
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+
+      promptsLibraryOpen: false,
+      setPromptsLibraryOpen: (open) => set({ promptsLibraryOpen: open }),
 
       showSplitEditor: false,
       toggleSplitEditor: () => set((s) => ({ showSplitEditor: !s.showSplitEditor })),

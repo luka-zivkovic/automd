@@ -6,6 +6,7 @@ import { createApp } from './app.js'
 import { setupWebSocket } from './ws.js'
 import { getStoragePath } from './storage.js'
 import { startUpdateChecker } from './update-check.js'
+import { startRetentionRunner } from './retention.js'
 import { isSetupComplete, isAuthDisabled } from './auth-storage.js'
 import { initS3Sync, hydrateFromS3, isS3SyncEnabled } from './s3-sync.js'
 
@@ -52,6 +53,7 @@ async function main() {
     }
 
     startUpdateChecker()
+    startRetentionRunner()
   })
 }
 

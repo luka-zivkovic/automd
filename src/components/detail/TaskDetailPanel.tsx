@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useUiStore } from '@/store/ui-store'
 import { useDocumentStore } from '@/store/document-store'
+import { useFilesStore } from '@/store/files-store'
 import { serializeMetadata } from '@/lib/markdown/metadata-serializer'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DescriptionEditor } from './DescriptionEditor'
 import { MetadataFieldEditor } from './MetadataFieldEditor'
 import { SubtaskList } from './SubtaskList'
-import { X, Trash2, Archive, ArchiveRestore } from 'lucide-react'
+import { X, Trash2, Archive, Inbox, ArrowRight } from 'lucide-react'
+import { apiFetch, HAS_SERVER } from '@/lib/api'
 
 export function TaskDetailPanel() {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId)
@@ -18,14 +20,37 @@ export function TaskDetailPanel() {
   const toggleTask = useDocumentStore((s) => s.toggleTask)
   const updateTaskContent = useDocumentStore((s) => s.updateTaskContent)
   const deleteTask = useDocumentStore((s) => s.deleteTask)
-  const archiveTask = useDocumentStore((s) => s.archiveTask)
-  const unarchiveTask = useDocumentStore((s) => s.unarchiveTask)
+
+  const activeFileId = useFilesStore((s) => s.activeFileId)
+  const files = useFilesStore((s) => s.files)
 
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [titleValue, setTitleValue] = useState('')
+  const [isMoving, setIsMoving] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
   const task = selectedTaskId ? taskMap.get(selectedTaskId) ?? null : null
+
+  // Determine board type: active, backlog, or archive
+  const boardType = useMemo(() => {
+    if (!activeFileId) return 'active' as const
+    for (const file of files) {
+      if (file.archiveBoardId === activeFileId) return 'archive' as const
+      if (file.backlogBoardId === activeFileId) return 'backlog' as const
+    }
+    return 'active' as const
+  }, [activeFileId, files])
+
+  // Find the parent board ID (the "active" board that owns this archive/backlog)
+  const parentBoardId = useMemo(() => {
+    if (boardType === 'active') return activeFileId
+    for (const file of files) {
+      if (file.archiveBoardId === activeFileId || file.backlogBoardId === activeFileId) {
+        return file.id
+      }
+    }
+    return null
+  }, [boardType, activeFileId, files])
 
   // Sync title from task when task changes
   useEffect(() => {
@@ -79,12 +104,34 @@ export function TaskDetailPanel() {
     }
   }
 
-  function handleArchiveToggle() {
-    if (task!.metadata.archived) {
-      unarchiveTask(task!.id)
-    } else {
-      archiveTask(task!.id)
-      setSelectedTaskId(null)
+  async function handleMoveToBoard(targetType: 'active' | 'archive' | 'backlog') {
+    if (!task || !activeFileId || !parentBoardId || !HAS_SERVER || isMoving) return
+    setIsMoving(true)
+
+    try {
+      let targetBoardId: string | null = null
+
+      if (targetType === 'active') {
+        targetBoardId = parentBoardId
+      } else {
+        const result = await apiFetch<{ id: string }>(`/files/${parentBoardId}/${targetType}`, {
+          method: 'POST',
+        })
+        if (!result.ok) return
+        targetBoardId = result.data.id
+      }
+
+      if (!targetBoardId || targetBoardId === activeFileId) return
+
+      const result = await apiFetch(`/files/${activeFileId}/tasks/${task.id}/move-to/${targetBoardId}`, {
+        method: 'POST',
+      })
+
+      if (result.ok) {
+        setSelectedTaskId(null)
+      }
+    } finally {
+      setIsMoving(false)
     }
   }
 
@@ -178,27 +225,71 @@ export function TaskDetailPanel() {
 
             <Separator />
 
-            {/* Archive */}
-            <div className="pt-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleArchiveToggle}
-                className="text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150"
-              >
-                {task.metadata.archived ? (
+            {/* Move buttons — contextual based on board type */}
+            {HAS_SERVER && (
+              <div className="pt-1 space-y-1">
+                {boardType === 'active' && (
                   <>
-                    <ArchiveRestore className="size-3.5" />
-                    Unarchive task
-                  </>
-                ) : (
-                  <>
-                    <Archive className="size-3.5" />
-                    Archive task
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isMoving}
+                      onClick={() => handleMoveToBoard('backlog')}
+                      className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150"
+                    >
+                      <Inbox className="size-3.5" />
+                      Move to Backlog
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isMoving}
+                      onClick={() => handleMoveToBoard('archive')}
+                      className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150"
+                    >
+                      <Archive className="size-3.5" />
+                      Archive
+                    </Button>
                   </>
                 )}
-              </Button>
-            </div>
+                {boardType === 'backlog' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isMoving}
+                    onClick={() => handleMoveToBoard('active')}
+                    className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150"
+                  >
+                    <ArrowRight className="size-3.5" />
+                    Move to Active
+                  </Button>
+                )}
+                {boardType === 'archive' && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isMoving}
+                      onClick={() => handleMoveToBoard('active')}
+                      className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150"
+                    >
+                      <ArrowRight className="size-3.5" />
+                      Move to Active
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isMoving}
+                      onClick={() => handleMoveToBoard('backlog')}
+                      className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150"
+                    >
+                      <Inbox className="size-3.5" />
+                      Move to Backlog
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Delete */}
             <div className="pt-1">

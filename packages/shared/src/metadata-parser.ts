@@ -8,10 +8,12 @@ const PRIORITY_RE = /priority:(high|medium|low)/i
 const CREATED_BY_RE = /created-by:([\w-]+)/i
 const BUILT_BY_RE = /built-by:([\w-]+)/i
 const ARCHIVED_RE = /archived:true/i
+const COMPLETED_AT_RE = /completed-at:(\d{4}-\d{2}-\d{2})/i
+const ARCHIVED_AT_RE = /archived-at:(\d{4}-\d{2}-\d{2})/i
 
 // All token patterns for stripping — order matters (longer patterns first)
 const ALL_TOKENS_RE =
-  /\s*(?:archived:true|created-by:[\w-]+|built-by:[\w-]+|priority:(?:high|medium|low)|est:[\d.]+h?|due:\d{4}-\d{2}-\d{2}|@\w[\w-]*|#\w[\w-]*)\s*/gi
+  /\s*(?:completed-at:\d{4}-\d{2}-\d{2}|archived-at:\d{4}-\d{2}-\d{2}|archived:true|created-by:[\w-]+|built-by:[\w-]+|priority:(?:high|medium|low)|est:[\d.]+h?|due:\d{4}-\d{2}-\d{2}|@\w[\w-]*|#\w[\w-]*)\s*/gi
 
 export function emptyMetadata(): TaskMetadata {
   return {
@@ -23,6 +25,8 @@ export function emptyMetadata(): TaskMetadata {
     createdBy: null,
     builtBy: null,
     archived: false,
+    completedAt: null,
+    archivedAt: null,
   }
 }
 
@@ -63,6 +67,14 @@ export function parseMetadata(content: string): {
 
   // Extract archived flag
   if (ARCHIVED_RE.test(content)) metadata.archived = true
+
+  // Extract completed-at date
+  const completedAtMatch = content.match(COMPLETED_AT_RE)
+  if (completedAtMatch) metadata.completedAt = completedAtMatch[1]
+
+  // Extract archived-at date
+  const archivedAtMatch = content.match(ARCHIVED_AT_RE)
+  if (archivedAtMatch) metadata.archivedAt = archivedAtMatch[1]
 
   // Strip all tokens to get display content
   const displayContent = content

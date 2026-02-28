@@ -87,22 +87,32 @@ export function Sidebar() {
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [activeDragFile, setActiveDragFile] = useState<BoardFile | null>(null)
 
+  // Filter out archive/backlog boards from sidebar listing
+  const visibleFiles = useMemo(() => {
+    const linkedIds = new Set<string>()
+    for (const f of files) {
+      if (f.archiveBoardId) linkedIds.add(f.archiveBoardId)
+      if (f.backlogBoardId) linkedIds.add(f.backlogBoardId)
+    }
+    return files.filter((f) => !linkedIds.has(f.id))
+  }, [files])
+
   // Group files by project
   const ungroupedFiles = useMemo(
-    () => files.filter((f) => f.projectId === null),
-    [files]
+    () => visibleFiles.filter((f) => f.projectId === null),
+    [visibleFiles]
   )
 
   const filesByProject = useMemo(() => {
-    const map = new Map<string, typeof files>()
+    const map = new Map<string, typeof visibleFiles>()
     for (const project of projects) {
       map.set(
         project.id,
-        files.filter((f) => f.projectId === project.id)
+        visibleFiles.filter((f) => f.projectId === project.id)
       )
     }
     return map
-  }, [files, projects])
+  }, [visibleFiles, projects])
 
   const ungroupedFileIds = useMemo(
     () => ungroupedFiles.map((f) => f.id),
@@ -290,7 +300,7 @@ export function Sidebar() {
               />
 
               {/* Empty state */}
-              {files.length === 0 && projects.length === 0 && (
+              {visibleFiles.length === 0 && projects.length === 0 && (
                 <p className="text-xs text-muted-foreground px-2 py-4 text-center">
                   No boards yet. Create one to get started.
                 </p>

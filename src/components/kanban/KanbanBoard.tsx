@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -21,33 +21,14 @@ import type { Task } from '@/lib/markdown/types'
 import { KanbanColumn } from './KanbanColumn'
 import { KanbanCard } from './KanbanCard'
 import { AddColumnButton } from './AddColumnButton'
-import { Button } from '@/components/ui/button'
-import { Columns3, Archive } from 'lucide-react'
+import { Columns3 } from 'lucide-react'
 
 export function KanbanBoard() {
   const columns = useDocumentStore((s) => s.columns)
   const moveTask = useDocumentStore((s) => s.moveTask)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
-  const [showArchived, setShowArchived] = useState(false)
 
-  const archivedCount = useMemo(
-    () => columns.flatMap((c) => c.tasks).filter((t) => t.metadata.archived).length,
-    [columns]
-  )
-
-  const archiveFilteredColumns = useMemo(
-    () =>
-      showArchived
-        ? columns
-        : columns.map((col) => ({
-            ...col,
-            tasks: col.tasks.filter((t) => !t.metadata.archived),
-          })),
-    [columns, showArchived]
-  )
-
-  // Apply search/filter-store filters on top of archive filtering
-  const filteredColumns = useFilteredColumns(archiveFilteredColumns)
+  const filteredColumns = useFilteredColumns(columns)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -163,21 +144,6 @@ export function KanbanBoard() {
       onDragEnd={handleDragEnd}
     >
       <div className="flex flex-col h-full">
-        {/* Archived toggle */}
-        {archivedCount > 0 && (
-          <div className="px-6 pt-4">
-            <Button
-              variant={showArchived ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setShowArchived(!showArchived)}
-              className="text-xs text-muted-foreground"
-            >
-              <Archive className="size-3" />
-              {showArchived ? 'Hide' : 'Show'} archived ({archivedCount})
-            </Button>
-          </div>
-        )}
-
         <div className="flex gap-5 p-6 flex-1 overflow-x-auto">
           {filteredColumns.map((col, idx) => (
             <KanbanColumn key={col.id} column={col} columnIndex={idx} totalColumns={filteredColumns.length} />

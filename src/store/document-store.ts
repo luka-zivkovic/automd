@@ -60,8 +60,6 @@ interface DocumentStore {
   updateTaskMetadata: (taskId: string, displayContent: string, metadata: Partial<TaskMetadata>) => void
   updateTaskDescription: (taskId: string, description: string | null) => void
   deleteTask: (taskId: string) => void
-  archiveTask: (taskId: string) => void
-  unarchiveTask: (taskId: string) => void
 
   // Subtask actions
   addSubtask: (taskId: string, content: string) => void
@@ -141,17 +139,25 @@ export const useDocumentStore = create<DocumentStore>()(
         toggleTask: (taskId: string) => {
           const task = get().taskMap.get(taskId)
           const username = useUserStore.getState().username
+          const today = new Date().toISOString().slice(0, 10)
 
-          // When checking off a task, add built-by signature
-          if (task && task.checked === false && username && !task.metadata.builtBy) {
+          if (task) {
             get()._applyAstMutation((ast) => {
               const toggled = toggleTaskMutation(ast, taskId)
-              return updateTaskMetadataMutation(
-                toggled,
-                taskId,
-                task.displayContent,
-                { ...task.metadata, builtBy: username }
-              )
+              const newMeta = { ...task.metadata }
+
+              if (task.checked === false) {
+                // Being checked → stamp completed-at + built-by
+                newMeta.completedAt = today
+                if (username && !task.metadata.builtBy) {
+                  newMeta.builtBy = username
+                }
+              } else {
+                // Being unchecked → clear completed-at
+                newMeta.completedAt = null
+              }
+
+              return updateTaskMetadataMutation(toggled, taskId, task.displayContent, newMeta)
             })
           } else {
             get()._applyAstMutation((ast) => toggleTaskMutation(ast, taskId))
@@ -203,22 +209,6 @@ export const useDocumentStore = create<DocumentStore>()(
         deleteTask: (taskId: string) => {
           get()._applyAstMutation((ast) =>
             deleteTaskMutation(ast, taskId)
-          )
-        },
-
-        archiveTask: (taskId: string) => {
-          const task = get().taskMap.get(taskId)
-          if (!task) return
-          get()._applyAstMutation((ast) =>
-            updateTaskMetadataMutation(ast, taskId, task.displayContent, { ...task.metadata, archived: true })
-          )
-        },
-
-        unarchiveTask: (taskId: string) => {
-          const task = get().taskMap.get(taskId)
-          if (!task) return
-          get()._applyAstMutation((ast) =>
-            updateTaskMetadataMutation(ast, taskId, task.displayContent, { ...task.metadata, archived: false })
           )
         },
 

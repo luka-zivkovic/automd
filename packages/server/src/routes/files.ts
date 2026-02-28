@@ -9,22 +9,36 @@ import { parseBoard, invalidateBoardCache } from '../board-cache.js'
 export const filesRouter = Router()
 
 // List all boards
-filesRouter.get('/', (_req, res, next) => {
+filesRouter.get('/', (req, res, next) => {
   try {
     const files = storage.listFiles()
+    const includeArchived = req.query.includeArchived === 'true'
+    const includeBacklog = req.query.includeBacklog === 'true'
+
     // Return metadata only (no full markdown) for listing
-    const summary = files.map((f) => {
-      const { columns } = parseBoard(f.markdown, f.id)
-      const taskCount = columns.reduce((sum, col) => sum + col.tasks.length, 0)
-      return {
-        id: f.id,
-        name: f.name,
-        projectId: f.projectId,
-        taskCount,
-        createdAt: f.createdAt,
-        updatedAt: f.updatedAt,
-      }
-    })
+    const summary = files
+      .filter((f) => {
+        const { meta } = parseBoard(f.markdown, f.id)
+        if (!includeArchived && meta?.archiveFor) return false
+        if (!includeBacklog && meta?.backlogFor) return false
+        return true
+      })
+      .map((f) => {
+        const { columns, meta } = parseBoard(f.markdown, f.id)
+        const taskCount = columns.reduce((sum, col) => sum + col.tasks.length, 0)
+        return {
+          id: f.id,
+          name: f.name,
+          projectId: f.projectId,
+          taskCount,
+          createdAt: f.createdAt,
+          updatedAt: f.updatedAt,
+          archiveBoardId: f.archiveBoardId,
+          backlogBoardId: f.backlogBoardId,
+          isArchiveBoard: !!meta?.archiveFor,
+          isBacklogBoard: !!meta?.backlogFor,
+        }
+      })
     res.json(summary)
   } catch (err) {
     next(err)
@@ -141,6 +155,63 @@ filesRouter.put('/:id', async (req, res, next) => {
   }
 })
 
+// Get or create the archive board for a given board
+filesRouter.post('/:id/archive', async (req, res, next) => {
+  if (!isValidId(req.params.id)) {
+    res.status(400).json({ error: 'Invalid board ID format' })
+    return
+  }
+
+  try {
+    const parentFile = storage.getFile(req.params.id)
+    if (!parentFile) {
+      res.status(404).json({ error: 'Board not found' })
+      return
+    }
+
+    const result = await withWriteLock(() => {
+      return storage.getOrCreateArchiveBoard(req.params.id, parentFile.name, () => nanoid(10))
+    })
+
+    // Check if this was newly created (parent didn't have archiveBoardId before)
+    if (!parentFile.archiveBoardId) {
+      broadcast({ type: 'file:created', payload: { id: result.id, name: result.name } })
+    }
+
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Get or create the backlog board for a given board
+filesRouter.post('/:id/backlog', async (req, res, next) => {
+  if (!isValidId(req.params.id)) {
+    res.status(400).json({ error: 'Invalid board ID format' })
+    return
+  }
+
+  try {
+    const parentFile = storage.getFile(req.params.id)
+    if (!parentFile) {
+      res.status(404).json({ error: 'Board not found' })
+      return
+    }
+
+    const result = await withWriteLock(() => {
+      return storage.getOrCreateBacklogBoard(req.params.id, parentFile.name, () => nanoid(10))
+    })
+
+    if (!parentFile.backlogBoardId) {
+      broadcast({ type: 'file:created', payload: { id: result.id, name: result.name } })
+    }
+
+    res.json(result)
+  } catch (err) {
+    next(err)
+  }
+})
+
 // Delete a board
 filesRouter.delete('/:id', async (req, res, next) => {
   if (!isValidId(req.params.id)) {
@@ -149,15 +220,34 @@ filesRouter.delete('/:id', async (req, res, next) => {
   }
 
   try {
-    const deleted = await withWriteLock(() => {
-      return storage.deleteFile(req.params.id)
+    const result = await withWriteLock(() => {
+      const file = storage.getFile(req.params.id)
+      const archiveBoardId = file?.archiveBoardId ?? null
+      const backlogBoardId = file?.backlogBoardId ?? null
+      // Also delete linked archive/backlog boards if they exist
+      if (archiveBoardId) {
+        storage.deleteFile(archiveBoardId)
+        invalidateBoardCache(archiveBoardId)
+      }
+      if (backlogBoardId) {
+        storage.deleteFile(backlogBoardId)
+        invalidateBoardCache(backlogBoardId)
+      }
+      const ok = storage.deleteFile(req.params.id)
+      return { ok, archiveBoardId, backlogBoardId }
     })
 
-    if (!deleted) {
+    if (!result.ok) {
       res.status(404).json({ error: 'Board not found' })
       return
     }
     invalidateBoardCache(req.params.id)
+    if (result.archiveBoardId) {
+      broadcast({ type: 'file:deleted', payload: { id: result.archiveBoardId } })
+    }
+    if (result.backlogBoardId) {
+      broadcast({ type: 'file:deleted', payload: { id: result.backlogBoardId } })
+    }
     broadcast({ type: 'file:deleted', payload: { id: req.params.id, actor: req.body?.actor } })
     res.status(204).send()
   } catch (err) {

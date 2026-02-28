@@ -20,10 +20,14 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('list_boards', {
     title: 'List Boards',
-    description: 'List all boards with their task counts',
-  }, async () => {
+    description: 'List all boards with their task counts. Archive and backlog boards are excluded by default.',
+    inputSchema: {
+      includeArchived: z.boolean().optional().describe('Include archive boards in the listing (default: false)'),
+      includeBacklog: z.boolean().optional().describe('Include backlog boards in the listing (default: false)'),
+    },
+  }, async ({ includeArchived, includeBacklog }) => {
     try {
-      const boards = await api.listFiles()
+      const boards = await api.listFiles(includeArchived ?? false, includeBacklog ?? false)
       return json(boards)
     } catch (err) {
       return errorResponse(err)
@@ -408,7 +412,7 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, assignee, label, checked }) => {
     try {
-      const boards = await api.listFiles()
+      const boards = await api.listFiles(true, true)
       const results: Array<{
         boardId: string
         boardName: string
@@ -463,7 +467,7 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, label, completedOnly }) => {
     try {
-      const boards = await api.listFiles()
+      const boards = await api.listFiles(true, true)
       const results: Array<{
         boardId: string
         boardName: string
@@ -561,6 +565,175 @@ export function registerTools(server: McpServer) {
         (b: { projectId: string | null }) => b.projectId === projectId,
       )
       return json(projectBoards)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  // ─── Cross-Board Tools ─────────────────────────────────────────
+
+  server.registerTool('move_task_to_board', {
+    title: 'Move Task to Board',
+    description: 'Move a task from one board to another (e.g. active → archive, backlog → active). The task is removed from the source board and added to the target board.',
+    inputSchema: {
+      sourceBoardId: z.string().describe('The board ID the task currently lives on'),
+      taskId: z.string().describe('The task ID to move'),
+      targetBoardId: z.string().describe('The board ID to move the task to'),
+      targetColumnId: z.string().optional().describe('Column ID on the target board to place the task in. If omitted, uses the first column.'),
+    },
+  }, async ({ sourceBoardId, taskId, targetBoardId, targetColumnId }) => {
+    try {
+      const result = await api.moveTaskToBoard(sourceBoardId, taskId, targetBoardId, targetColumnId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('get_full_board_context', {
+    title: 'Get Full Board Context',
+    description: 'Get a board and its linked archive/backlog boards in one call. Returns task titles for all three boards so you can understand the full task lifecycle without making separate calls.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID (the active/main board)'),
+    },
+  }, async ({ boardId }) => {
+    try {
+      const board = await api.getFile(boardId)
+
+      const result: {
+        active: { id: string; name: string; columns: Array<{ id: string; title: string; tasks: Array<{ id: string; title: string; checked: boolean | null }> }> }
+        backlog: { id: string; name: string; columns: Array<{ id: string; title: string; tasks: Array<{ id: string; title: string; checked: boolean | null }> }> } | null
+        archive: { id: string; name: string; columns: Array<{ id: string; title: string; tasks: Array<{ id: string; title: string; checked: boolean | null }> }> } | null
+      } = {
+        active: {
+          id: board.id,
+          name: board.name,
+          columns: board.columns.map((c: { id: string; title: string; tasks: Array<{ id: string; displayContent: string; checked: boolean | null }> }) => ({
+            id: c.id,
+            title: c.title,
+            tasks: c.tasks.map((t: { id: string; displayContent: string; checked: boolean | null }) => ({
+              id: t.id,
+              title: t.displayContent,
+              checked: t.checked,
+            })),
+          })),
+        },
+        backlog: null,
+        archive: null,
+      }
+
+      if (board.backlogBoardId) {
+        try {
+          const backlog = await api.getFile(board.backlogBoardId)
+          result.backlog = {
+            id: backlog.id,
+            name: backlog.name,
+            columns: backlog.columns.map((c: { id: string; title: string; tasks: Array<{ id: string; displayContent: string; checked: boolean | null }> }) => ({
+              id: c.id,
+              title: c.title,
+              tasks: c.tasks.map((t: { id: string; displayContent: string; checked: boolean | null }) => ({
+                id: t.id,
+                title: t.displayContent,
+                checked: t.checked,
+              })),
+            })),
+          }
+        } catch { /* backlog board doesn't exist yet */ }
+      }
+
+      if (board.archiveBoardId) {
+        try {
+          const archive = await api.getFile(board.archiveBoardId)
+          result.archive = {
+            id: archive.id,
+            name: archive.name,
+            columns: archive.columns.map((c: { id: string; title: string; tasks: Array<{ id: string; displayContent: string; checked: boolean | null }> }) => ({
+              id: c.id,
+              title: c.title,
+              tasks: c.tasks.map((t: { id: string; displayContent: string; checked: boolean | null }) => ({
+                id: t.id,
+                title: t.displayContent,
+                checked: t.checked,
+              })),
+            })),
+          }
+        } catch { /* archive board doesn't exist yet */ }
+      }
+
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  // ─── Cleanup Tools ──────────────────────────────────────────────
+
+  server.registerTool('archive_completed_tasks', {
+    title: 'Archive Completed Tasks',
+    description: 'Bulk-archive completed tasks on a board. Archives checked tasks matching the given filters by setting archived:true metadata. Returns the count of tasks archived.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      olderThanDays: z.number().optional().describe('Only archive tasks completed more than N days ago (requires completed-at: metadata). If omitted, archives all matching tasks regardless of age.'),
+      columnId: z.string().optional().describe('Only archive tasks in this specific column'),
+      onlyChecked: z.boolean().optional().describe('Only archive checked/completed tasks (default: true)'),
+    },
+  }, async ({ boardId, olderThanDays, columnId, onlyChecked }) => {
+    try {
+      const board = await api.getFile(boardId)
+      const today = new Date()
+      const todayStr = today.toISOString().slice(0, 10)
+      const updates: Array<{ taskId: string; displayContent: string; metadata: Record<string, unknown> }> = []
+
+      for (const column of board.columns) {
+        if (columnId && column.id !== columnId) continue
+
+        for (const task of column.tasks) {
+          if (task.metadata.archived) continue
+          if (onlyChecked !== false && !task.checked) continue
+
+          if (olderThanDays !== undefined) {
+            if (!task.metadata.completedAt) continue
+            const completedDate = new Date(task.metadata.completedAt)
+            const daysSince = Math.floor((today.getTime() - completedDate.getTime()) / (1000 * 60 * 60 * 24))
+            if (daysSince < olderThanDays) continue
+          }
+
+          updates.push({
+            taskId: task.id,
+            displayContent: task.displayContent,
+            metadata: { ...task.metadata, archived: true, archivedAt: todayStr },
+          })
+        }
+      }
+
+      if (updates.length === 0) {
+        return text('No tasks matched the archive criteria.')
+      }
+
+      const results: Array<{ taskId: string; ok: boolean; error?: string }> = []
+      for (const update of updates) {
+        try {
+          await api.updateTask(boardId, update.taskId, {
+            action: 'updateMetadata',
+            displayContent: update.displayContent,
+            metadata: update.metadata,
+          })
+          results.push({ taskId: update.taskId, ok: true })
+        } catch (err) {
+          results.push({
+            taskId: update.taskId,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+
+      return json({
+        archived: results.filter(r => r.ok).length,
+        failed: results.filter(r => !r.ok).length,
+        total: updates.length,
+        results,
+      })
     } catch (err) {
       return errorResponse(err)
     }

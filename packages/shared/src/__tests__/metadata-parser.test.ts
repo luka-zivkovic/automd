@@ -198,10 +198,12 @@ describe('serializeMetadata', () => {
       createdBy: 'sarah',
       builtBy: 'alex',
       archived: true,
+      completedAt: '2025-04-01',
+      archivedAt: '2025-04-15',
     }
     const result = serializeMetadata('Task', meta)
     expect(result).toBe(
-      'Task @alice #backend priority:high due:2025-04-01 est:8h created-by:sarah built-by:alex archived:true'
+      'Task @alice #backend priority:high due:2025-04-01 est:8h created-by:sarah built-by:alex completed-at:2025-04-01 archived-at:2025-04-15 archived:true'
     )
   })
 })
@@ -217,6 +219,8 @@ describe('parseMetadata ↔ serializeMetadata round-trip', () => {
       createdBy: 'sarah',
       builtBy: null,
       archived: false,
+      completedAt: null,
+      archivedAt: null,
     }
     const serialized = serializeMetadata('Build feature', original)
     const { metadata, displayContent } = parseMetadata(serialized)

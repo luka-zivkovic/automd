@@ -3,9 +3,10 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useFilesStore } from '@/store/files-store'
 import { Button } from '@/components/ui/button'
-import { GripVertical, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { GripVertical, MoreHorizontal, Pencil, Trash2, Archive, Inbox } from 'lucide-react'
 import type { BoardFile } from '@/lib/markdown/types'
 import { formatRelativeDate } from '@/lib/format-relative-date'
+import { apiFetch, HAS_SERVER } from '@/lib/api'
 
 interface FileListItemProps {
   file: BoardFile
@@ -100,108 +101,155 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
     deleteFile(file.id)
   }, [file.id, deleteFile])
 
+  const navigateToLinkedBoard = useCallback(async (type: 'archive' | 'backlog') => {
+    if (!HAS_SERVER) return
+    const result = await apiFetch<BoardFile>(`/files/${file.id}/${type}`, { method: 'POST' })
+    if (!result.ok) return
+    const board = result.data
+    // Fetch full markdown
+    const fullResult = await apiFetch<{ markdown?: string; archiveBoardId?: string | null; backlogBoardId?: string | null }>(`/files/${board.id}`)
+    if (!fullResult.ok) return
+    const fullBoard: BoardFile = {
+      ...board,
+      markdown: fullResult.data?.markdown ?? '',
+      archiveBoardId: fullResult.data?.archiveBoardId ?? null,
+      backlogBoardId: fullResult.data?.backlogBoardId ?? null,
+    }
+    useFilesStore.getState().addOrUpdateFile(fullBoard)
+    // Update parent's linked board ID
+    useFilesStore.getState().addOrUpdateFile({
+      ...file,
+      [`${type}BoardId`]: board.id,
+    } as BoardFile)
+    setActiveFile(board.id)
+  }, [file, setActiveFile])
+
   const handleStartRename = useCallback(() => {
     setMenuOpen(false)
     setRenameValue(file.name)
     setIsRenaming(true)
   }, [file.name])
 
-  return (
-    <div
-      ref={setNodeRef}
-      style={isDragOverlay ? undefined : style}
-      {...(isDragOverlay ? {} : attributes)}
-      className={`
-        group relative flex items-center gap-1 px-2.5 py-2 rounded-md cursor-pointer
-        transition-colors duration-150
-        ${isDragOverlay
-          ? 'bg-background border border-border shadow-lg ring-2 ring-primary/30 scale-[1.02]'
-          : isActive
-            ? 'bg-primary/10 text-foreground'
-            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-        }
-        ${isDragging ? 'z-10' : ''}
-      `}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      onContextMenu={(e) => {
-        e.preventDefault()
-        setMenuOpen(true)
-      }}
-    >
-      {/* Drag handle */}
-      {!isRenaming && !isDragOverlay && (
-        <div
-          className="shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground cursor-grab active:cursor-grabbing transition-opacity duration-150"
-          {...listeners}
-        >
-          <GripVertical className="size-3" />
-        </div>
-      )}
+  const showSubLinks = HAS_SERVER && !isDragOverlay && !isRenaming
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        {isRenaming ? (
-          <input
-            ref={inputRef}
-            className="w-full text-sm bg-background border border-border rounded px-1.5 py-0.5 outline-none focus:border-primary"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={handleRenameKeyDown}
-          />
-        ) : (
-          <>
-            <div className="text-sm font-medium truncate">{file.name}</div>
-            {!isDragOverlay && (
-              <div className="text-[11px] text-muted-foreground/70 truncate">
-                {formatRelativeDate(file.updatedAt)}
-              </div>
-            )}
-          </>
+  return (
+    <div>
+      <div
+        ref={setNodeRef}
+        style={isDragOverlay ? undefined : style}
+        {...(isDragOverlay ? {} : attributes)}
+        className={`
+          group relative flex items-center gap-1 px-2.5 py-2 rounded-md cursor-pointer
+          transition-colors duration-150
+          ${isDragOverlay
+            ? 'bg-background border border-border shadow-lg ring-2 ring-primary/30 scale-[1.02]'
+            : isActive
+              ? 'bg-primary/10 text-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          }
+          ${isDragging ? 'z-10' : ''}
+        `}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenuOpen(true)
+        }}
+      >
+        {/* Drag handle */}
+        {!isRenaming && !isDragOverlay && (
+          <div
+            className="shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground cursor-grab active:cursor-grabbing transition-opacity duration-150"
+            {...listeners}
+          >
+            <GripVertical className="size-3" />
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {isRenaming ? (
+            <input
+              ref={inputRef}
+              className="w-full text-sm bg-background border border-border rounded px-1.5 py-0.5 outline-none focus:border-primary"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={handleRenameKeyDown}
+            />
+          ) : (
+            <>
+              <div className="text-sm font-medium truncate">{file.name}</div>
+              {!isDragOverlay && (
+                <div className="text-[11px] text-muted-foreground/70 truncate">
+                  {formatRelativeDate(file.updatedAt)}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* More button */}
+        {!isRenaming && !isDragOverlay && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen((v) => !v)
+            }}
+          >
+            <MoreHorizontal className="size-3.5" />
+          </Button>
+        )}
+
+        {/* Dropdown menu */}
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            className="absolute right-0 top-full mt-1 z-50 w-36 rounded-md border border-border bg-popover p-1 shadow-md"
+          >
+            <button
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleStartRename()
+              }}
+            >
+              <Pencil className="size-3" />
+              Rename
+            </button>
+            <button
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDelete()
+              }}
+            >
+              <Trash2 className="size-3" />
+              Delete
+            </button>
+          </div>
         )}
       </div>
 
-      {/* More button */}
-      {!isRenaming && !isDragOverlay && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation()
-            setMenuOpen((v) => !v)
-          }}
-        >
-          <MoreHorizontal className="size-3.5" />
-        </Button>
-      )}
-
-      {/* Dropdown menu */}
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          className="absolute right-0 top-full mt-1 z-50 w-36 rounded-md border border-border bg-popover p-1 shadow-md"
-        >
+      {/* Sub-links: Archive & Backlog */}
+      {showSubLinks && (
+        <div className="pl-8 flex flex-col gap-0.5 mt-0.5">
           <button
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleStartRename()
-            }}
+            className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors py-0.5 text-left"
+            onClick={() => navigateToLinkedBoard('archive')}
           >
-            <Pencil className="size-3" />
-            Rename
+            <Archive className="size-3 shrink-0" />
+            Archive
           </button>
           <button
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDelete()
-            }}
+            className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors py-0.5 text-left"
+            onClick={() => navigateToLinkedBoard('backlog')}
           >
-            <Trash2 className="size-3" />
-            Delete
+            <Inbox className="size-3 shrink-0" />
+            Backlog
           </button>
         </div>
       )}

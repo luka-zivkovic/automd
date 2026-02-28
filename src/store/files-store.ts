@@ -15,6 +15,7 @@ interface FilesStore {
   renameFile: (fileId: string, name: string) => void
   updateFileMarkdown: (fileId: string, markdown: string) => void
   setActiveFile: (fileId: string) => void
+  addOrUpdateFile: (file: BoardFile) => void
 
   createProject: (name: string, color: string) => string
   deleteProject: (projectId: string) => void
@@ -42,6 +43,8 @@ export const useFilesStore = create<FilesStore>()(
             createdAt: now,
             updatedAt: now,
             projectId: null,
+            archiveBoardId: null,
+            backlogBoardId: null,
           }
           set((state) => {
             state.files.push(file)
@@ -87,6 +90,17 @@ export const useFilesStore = create<FilesStore>()(
         setActiveFile: (fileId: string) => {
           set((state) => {
             state.activeFileId = fileId
+          })
+        },
+
+        addOrUpdateFile: (file: BoardFile) => {
+          set((state) => {
+            const idx = state.files.findIndex((f) => f.id === file.id)
+            if (idx >= 0) {
+              state.files[idx] = file
+            } else {
+              state.files.push(file)
+            }
           })
         },
 

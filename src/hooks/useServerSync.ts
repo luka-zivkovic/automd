@@ -20,6 +20,7 @@ import { apiFetch, WS_BASE, HAS_SERVER } from '@/lib/api'
  */
 export function useServerSync() {
   const authToken = useAuthStore((s) => s.token)
+  const authStatus = useAuthStore((s) => s.status)
   const wsRef = useRef<WebSocket | null>(null)
   const isServerUpdateRef = useRef(false)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -33,7 +34,6 @@ export function useServerSync() {
     if (!HAS_SERVER) return // Local-only mode
 
     // Don't connect until auth is resolved
-    const authStatus = useAuthStore.getState().status
     if (authStatus !== 'authenticated') return
 
     mountedRef.current = true
@@ -81,6 +81,8 @@ export function useServerSync() {
                 createdAt: summary.createdAt,
                 updatedAt: summary.updatedAt,
                 projectId: summary.projectId,
+                archiveBoardId: (summary as Record<string, unknown>).archiveBoardId as string | null ?? null,
+                backlogBoardId: (summary as Record<string, unknown>).backlogBoardId as string | null ?? null,
               }
               // Track confirmed markdown
               confirmedMarkdownRef.current.set(file.id, file.markdown)
@@ -184,6 +186,8 @@ export function useServerSync() {
                     createdAt: file.createdAt,
                     updatedAt: file.updatedAt,
                     projectId: file.projectId,
+                    archiveBoardId: (file as Record<string, unknown>).archiveBoardId as string | null ?? null,
+                    backlogBoardId: (file as Record<string, unknown>).backlogBoardId as string | null ?? null,
                   }],
                 }))
                 confirmedMarkdownRef.current.set(file.id, file.markdown)
@@ -392,5 +396,5 @@ export function useServerSync() {
       useConnectionStore.getState().setAgents([])
       useConnectionStore.getState().setReconnect(null)
     }
-  }, [authToken])
+  }, [authToken, authStatus])
 }

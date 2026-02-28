@@ -5,6 +5,7 @@ export type {
   Column,
   DocumentState,
   BoardMeta,
+  RetentionConfig,
   IdCache,
   BoardFile,
   Project,
@@ -43,6 +44,8 @@ export {
   updateAcceptanceCriteria,
   updateLearnings,
   deleteTask,
+  extractTaskBlock,
+  insertTaskBlock,
   addSubtask,
   toggleSubtask,
   deleteSubtask,
@@ -54,3 +57,7 @@ export {
 
 // Default Document
 export { DEFAULT_MARKDOWN } from './default-document.js'
+
+// Prompt Catalog
+export { PROMPT_CATALOG, PROMPT_CATEGORIES } from './prompt-catalog.js'
+export type { PromptDefinition } from './prompt-catalog.js'

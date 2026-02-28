@@ -9,6 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@automd/shared': path.resolve(__dirname, './packages/shared/src/index.ts'),
     },
   },
   server: {

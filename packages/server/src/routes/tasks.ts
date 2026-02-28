@@ -10,6 +10,8 @@ import {
   updateAcceptanceCriteria,
   updateLearnings,
   deleteTask,
+  extractTaskBlock,
+  insertTaskBlock,
 } from '@automd/shared'
 import type { TaskMetadata } from '@automd/shared'
 import * as storage from '../storage.js'
@@ -20,6 +22,7 @@ import { parseBoard } from '../board-cache.js'
 
 type FileParams = { fileId: string }
 type TaskParams = { fileId: string; taskId: string }
+type MoveToParams = { fileId: string; taskId: string; targetFileId: string }
 
 export const tasksRouter = Router({ mergeParams: true })
 
@@ -123,13 +126,25 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         return { status: 409 as const, currentVersion: file.updatedAt }
       }
 
-      const { ast } = parseBoard(file.markdown, fileId)
+      const { ast, taskMap } = parseBoard(file.markdown, fileId)
       let newAst = ast
 
       switch (action) {
-        case 'toggle':
+        case 'toggle': {
+          const taskBefore = taskMap.get(taskId)
           newAst = toggleTask(ast, taskId)
+          if (taskBefore) {
+            const today = new Date().toISOString().slice(0, 10)
+            const newMeta = { ...taskBefore.metadata }
+            if (!taskBefore.checked) {
+              newMeta.completedAt = today
+            } else {
+              newMeta.completedAt = null
+            }
+            newAst = updateTaskMetadata(newAst, taskId, taskBefore.displayContent, newMeta)
+          }
           break
+        }
         case 'move':
           if (!targetColumnId || targetIndex === undefined) {
             return { status: 400 as const, error: 'targetColumnId and targetIndex required for move' }
@@ -208,6 +223,55 @@ tasksRouter.delete('/:taskId', async (req: Request<TaskParams>, res, next) => {
       res.status(404).json({ error: 'Board not found' })
     } else {
       res.status(204).send()
+    }
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Move a task to a different board
+tasksRouter.post('/:taskId/move-to/:targetFileId', async (req: Request<MoveToParams>, res, next) => {
+  const { fileId, taskId, targetFileId } = req.params
+
+  if (!isValidId(fileId) || !isValidId(taskId) || !isValidId(targetFileId)) {
+    res.status(400).json({ error: 'Invalid ID format' })
+    return
+  }
+
+  if (fileId === targetFileId) {
+    res.status(400).json({ error: 'Source and target boards must be different' })
+    return
+  }
+
+  try {
+    const result = await withWriteLock(() => {
+      const sourceFile = storage.getFile(fileId)
+      if (!sourceFile) return { status: 404 as const, error: 'Source board not found' }
+
+      const targetFile = storage.getFile(targetFileId)
+      if (!targetFile) return { status: 404 as const, error: 'Target board not found' }
+
+      const { ast: sourceAst } = parseBoard(sourceFile.markdown, fileId)
+      const extraction = extractTaskBlock(sourceAst, taskId)
+      if (!extraction) return { status: 404 as const, error: 'Task not found in source board' }
+
+      const newSourceMarkdown = serializeAst(extraction.modifiedAst)
+
+      const { ast: targetAst } = parseBoard(targetFile.markdown, targetFileId)
+      const targetColumnId = req.body?.targetColumnId ?? undefined
+      const newTargetAst = insertTaskBlock(targetAst, extraction.extractedNodes, targetColumnId)
+      const newTargetMarkdown = serializeAst(newTargetAst)
+
+      saveAndBroadcast(fileId, newSourceMarkdown)
+      saveAndBroadcast(targetFileId, newTargetMarkdown)
+
+      return { status: 200 as const }
+    })
+
+    if (result.status === 404) {
+      res.status(404).json({ error: result.error })
+    } else {
+      res.json({ ok: true })
     }
   } catch (err) {
     next(err)

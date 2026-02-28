@@ -9,6 +9,8 @@ export interface TaskMetadata {
   createdBy: string | null
   builtBy: string | null
   archived: boolean
+  completedAt: string | null
+  archivedAt: string | null
 }
 
 export interface Task {
@@ -32,12 +34,20 @@ export interface Column {
   tasks: Task[]
 }
 
+export interface RetentionConfig {
+  archiveDoneAfter?: number
+  deleteArchivedAfter?: number
+}
+
 export interface BoardMeta {
   board?: string
   project?: string
   projectId?: string
   description?: string
   tags?: string[]
+  retention?: RetentionConfig
+  archiveFor?: string
+  backlogFor?: string
 }
 
 export interface DocumentState {
@@ -61,6 +71,8 @@ export interface BoardFile {
   createdAt: number
   updatedAt: number
   projectId: string | null
+  archiveBoardId: string | null
+  backlogBoardId: string | null
 }
 
 export interface Project {
