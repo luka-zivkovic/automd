@@ -15,6 +15,34 @@ function errorResponse(err: unknown) {
   return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true as const }
 }
 
+interface MemoryEntry { topic: string; content: string }
+
+function parseMemoryEntries(rawText: string): MemoryEntry[] {
+  const text = rawText.trim()
+
+  // Try numbered list: "1. ...\n2. ..."
+  if (/^\d+[\.)]\s/m.test(text)) {
+    return text.split(/\n(?=\d+[\.)]\s)/)
+      .map(e => e.replace(/^\d+[\.)]\s*/, '').trim())
+      .filter(e => e.length > 0)
+      .map(content => ({ topic: content.split('\n')[0].slice(0, 80).trim(), content }))
+  }
+
+  // Try bullet list: "- ...\n- ..."
+  if (/^[-*]\s/m.test(text)) {
+    return text.split(/\n(?=[-*]\s)/)
+      .map(e => e.replace(/^[-*]\s*/, '').trim())
+      .filter(e => e.length > 0)
+      .map(content => ({ topic: content.split('\n')[0].slice(0, 80).trim(), content }))
+  }
+
+  // Fallback: split on double newlines
+  return text.split(/\n\s*\n/)
+    .map(p => p.trim())
+    .filter(p => p.length > 0)
+    .map(content => ({ topic: content.split('\n')[0].slice(0, 80).trim(), content }))
+}
+
 export function registerTools(server: McpServer) {
   // ─── Board Tools ─────────────────────────────────────────────────
 
@@ -661,6 +689,283 @@ export function registerTools(server: McpServer) {
       }
 
       return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  // ─── Knowledge Tools ────────────────────────────────────────────
+
+  server.registerTool('add_knowledge', {
+    title: 'Add Knowledge',
+    description: 'Add a standalone knowledge note to a board. Knowledge notes store decisions, patterns, references, and institutional knowledge — not tasks. They appear as ## headings with knowledge:true metadata and a description paragraph.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      columnId: z.string().describe('Column ID to add the knowledge note to (e.g. "Decisions", "Patterns")'),
+      topic: z.string().describe('Topic/title of the knowledge entry'),
+      content: z.string().optional().describe('The knowledge content — background, context, the actual knowledge. Stored as the description paragraph.'),
+      tags: z.array(z.string()).optional().describe('Tags for cross-referencing (without #). E.g., ["auth", "security"]'),
+      agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent adding this knowledge'),
+    },
+  }, async ({ boardId, columnId, topic, content, tags, agentName }) => {
+    try {
+      const tagStr = tags?.length ? ' ' + tags.map(t => `#${t}`).join(' ') : ''
+      const builtBy = agentName ? ` built-by:${agentName}` : ''
+      const heading = `${topic}${tagStr} knowledge:true${builtBy}`
+
+      const result = await api.addTask(boardId, columnId, heading)
+
+      if (content) {
+        await api.updateTask(boardId, result.taskId, {
+          action: 'updateDescription',
+          description: content,
+        })
+      }
+
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('update_knowledge', {
+    title: 'Update Knowledge',
+    description: 'Update an existing knowledge note\'s content, learnings, or tags',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      knowledgeId: z.string().describe('The knowledge note ID (same as task ID)'),
+      content: z.string().optional().describe('Updated knowledge content (replaces description)'),
+      learnings: z.string().optional().describe('Learnings to record (each line = bullet under ### Learnings). Supports #tags.'),
+      tags: z.array(z.string()).optional().describe('Replace tags on this knowledge note (without #)'),
+    },
+  }, async ({ boardId, knowledgeId, content, learnings, tags }) => {
+    try {
+      if (content) {
+        await api.updateTask(boardId, knowledgeId, {
+          action: 'updateDescription',
+          description: content,
+        })
+      }
+      if (learnings) {
+        await api.updateTask(boardId, knowledgeId, {
+          action: 'updateLearnings',
+          learnings,
+        })
+      }
+      if (tags) {
+        const board = await api.getFile(boardId)
+        const task = board.columns
+          .flatMap((c: { tasks: Array<{ id: string; displayContent: string; metadata: Record<string, unknown> }> }) => c.tasks)
+          .find((t: { id: string }) => t.id === knowledgeId)
+        if (task) {
+          await api.updateTask(boardId, knowledgeId, {
+            action: 'updateMetadata',
+            displayContent: task.displayContent,
+            metadata: { ...task.metadata, labels: tags },
+          })
+        }
+      }
+      return text('Knowledge note updated')
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('find_knowledge', {
+    title: 'Find Knowledge',
+    description: 'Search all boards for knowledge relevant to a topic. Searches knowledge notes, task learnings, descriptions, and acceptance criteria. Knowledge notes (knowledge:true) are prioritized in results. Use this before starting work to find relevant context.',
+    inputSchema: {
+      query: z.string().optional().describe('Text to search for across all knowledge'),
+      tags: z.array(z.string()).optional().describe('Filter by tags (without #). Matches metadata labels and inline #tags in learnings.'),
+      knowledgeOnly: z.boolean().optional().describe('Only return knowledge notes, not task learnings (default: false)'),
+      boardId: z.string().optional().describe('Restrict search to a specific board'),
+    },
+  }, async ({ query, tags, knowledgeOnly, boardId }) => {
+    try {
+      let boards: Array<{ id: string; columns: Array<{ title: string; tasks: Array<{ id: string; content: string; displayContent: string; description: string | null; learnings: string | null; metadata: { knowledge?: boolean; labels: string[] } }> }> ; name: string }>
+
+      if (boardId) {
+        boards = [await api.getFile(boardId)]
+      } else {
+        const listing = await api.listFiles(true, true)
+        const fetched = await Promise.all(
+          listing.map((b: { id: string }) => api.getFile(b.id).catch(() => null))
+        )
+        boards = fetched.filter(Boolean)
+      }
+
+      const results: Array<{
+        boardId: string; boardName: string; id: string; topic: string
+        type: 'knowledge' | 'task-learning'; tags: string[]; column: string
+        content: string | null; learnings: string | null
+      }> = []
+      const q = query?.toLowerCase()
+
+      for (const board of boards) {
+        for (const column of board.columns) {
+          for (const task of column.tasks) {
+            const isKnowledge = task.metadata.knowledge === true
+            if (knowledgeOnly && !isKnowledge) continue
+
+            const hasContext = task.description || task.learnings || isKnowledge
+            if (!hasContext && !isKnowledge) continue
+
+            const searchable = [task.content, task.description, task.learnings]
+              .filter(Boolean).join(' ').toLowerCase()
+
+            let match = true
+            if (q && !searchable.includes(q)) match = false
+            if (tags?.length) {
+              const hasAnyTag = tags.some(tag => {
+                const hasLabel = task.metadata.labels.includes(tag)
+                const hasInline = searchable.includes(`#${tag.toLowerCase()}`)
+                return hasLabel || hasInline
+              })
+              if (!hasAnyTag) match = false
+            }
+
+            if (match) {
+              results.push({
+                boardId: board.id,
+                boardName: board.name,
+                id: task.id,
+                topic: task.displayContent,
+                type: isKnowledge ? 'knowledge' : 'task-learning',
+                tags: task.metadata.labels,
+                column: column.title,
+                content: task.description,
+                learnings: task.learnings,
+              })
+            }
+          }
+        }
+      }
+
+      results.sort((a, b) => {
+        if (a.type === 'knowledge' && b.type !== 'knowledge') return -1
+        if (a.type !== 'knowledge' && b.type === 'knowledge') return 1
+        return 0
+      })
+
+      return json({ count: results.length, results })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('synthesize_topic', {
+    title: 'Synthesize Topic',
+    description: 'Aggregate all knowledge about a topic into a structured brief. Collects knowledge notes, task learnings, and descriptions across all boards and returns them organized by type.',
+    inputSchema: {
+      topic: z.string().describe('The topic to synthesize (e.g., "authentication", "pricing", "deployment")'),
+      boardId: z.string().optional().describe('Restrict to a specific board (default: all boards)'),
+    },
+  }, async ({ topic, boardId }) => {
+    try {
+      let boards: Array<{ id: string; name: string; columns: Array<{ tasks: Array<{ content: string; displayContent: string; description: string | null; learnings: string | null; metadata: { knowledge?: boolean; labels: string[] } }> }> }>
+
+      if (boardId) {
+        boards = [await api.getFile(boardId)]
+      } else {
+        const listing = await api.listFiles(true, true)
+        const fetched = await Promise.all(
+          listing.map((b: { id: string }) => api.getFile(b.id).catch(() => null))
+        )
+        boards = fetched.filter(Boolean)
+      }
+
+      const q = topic.toLowerCase()
+      const knowledgeNotes: Array<{ topic: string; content: string | null; learnings: string | null; tags: string[]; board: string }> = []
+      const taskLearnings: Array<{ task: string; learnings: string; board: string }> = []
+      const relatedDescriptions: Array<{ task: string; description: string; board: string }> = []
+
+      for (const board of boards) {
+        for (const column of board.columns) {
+          for (const task of column.tasks) {
+            const searchable = [task.content, task.description, task.learnings]
+              .filter(Boolean).join(' ').toLowerCase()
+
+            if (!searchable.includes(q)) continue
+
+            if (task.metadata.knowledge) {
+              knowledgeNotes.push({
+                topic: task.displayContent,
+                content: task.description,
+                learnings: task.learnings,
+                tags: task.metadata.labels,
+                board: board.name,
+              })
+            } else {
+              if (task.learnings) {
+                taskLearnings.push({ task: task.displayContent, learnings: task.learnings, board: board.name })
+              }
+              if (task.description) {
+                relatedDescriptions.push({ task: task.displayContent, description: task.description, board: board.name })
+              }
+            }
+          }
+        }
+      }
+
+      return json({
+        topic,
+        knowledgeNotes,
+        taskLearnings,
+        relatedDescriptions,
+        summary: {
+          knowledgeNoteCount: knowledgeNotes.length,
+          taskLearningCount: taskLearnings.length,
+          relatedDescriptionCount: relatedDescriptions.length,
+          totalSources: knowledgeNotes.length + taskLearnings.length + relatedDescriptions.length,
+        },
+      })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('import_memories', {
+    title: 'Import AI Memories',
+    description: 'Import memories/knowledge from another AI platform (Claude, ChatGPT, Cursor, etc.) into AutoMD as structured knowledge notes. Paste raw text and each distinct entry becomes a knowledge note.',
+    inputSchema: {
+      boardId: z.string().describe('The board to import into'),
+      columnId: z.string().describe('Column to place imported knowledge notes in'),
+      rawText: z.string().describe('Raw text of memories. Supports: numbered lists, bullet lists, or paragraph-separated entries.'),
+      source: z.string().optional().describe('Source platform (e.g., "claude", "chatgpt", "cursor"). Tagged as built-by.'),
+      defaultTags: z.array(z.string()).optional().describe('Tags to apply to all imported entries (without #)'),
+    },
+  }, async ({ boardId, columnId, rawText, source, defaultTags }) => {
+    try {
+      const entries = parseMemoryEntries(rawText)
+      const results: Array<{ topic: string; id?: string; ok: boolean; error?: string }> = []
+
+      for (const entry of entries) {
+        const inlineTags = [...entry.content.matchAll(/#(\w[\w-]*)/g)].map(m => m[1])
+        const allTags = [...new Set([...(defaultTags ?? []), ...inlineTags])]
+        const tagStr = allTags.length ? ' ' + allTags.map(t => `#${t}`).join(' ') : ''
+        const builtBy = source ? ` built-by:${source}` : ''
+        const heading = `${entry.topic}${tagStr} knowledge:true${builtBy}`
+
+        try {
+          const result = await api.addTask(boardId, columnId, heading)
+          if (entry.content !== entry.topic) {
+            await api.updateTask(boardId, result.taskId, {
+              action: 'updateDescription',
+              description: entry.content,
+            })
+          }
+          results.push({ topic: entry.topic, id: result.taskId, ok: true })
+        } catch (err) {
+          results.push({ topic: entry.topic, ok: false, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+
+      return json({
+        imported: results.filter(r => r.ok).length,
+        failed: results.filter(r => !r.ok).length,
+        total: entries.length,
+        results,
+      })
     } catch (err) {
       return errorResponse(err)
     }

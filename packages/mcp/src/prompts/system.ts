@@ -59,6 +59,7 @@ A plain paragraph here is the task's **description** — background context expl
 - \`built-by:agentname\` — AI authorship tracking
 - \`completed-at:YYYY-MM-DD\` — auto-stamped when task is checked
 - \`archived-at:YYYY-MM-DD\` — auto-stamped when task is archived
+- \`knowledge:true\` — marks a task as a standalone knowledge note (no checkbox)
 
 ### Retention Config (YAML frontmatter)
 - \`archive_done_after: N\` — auto-archive completed tasks after N days
@@ -88,6 +89,14 @@ A plain paragraph here is the task's **description** — background context expl
 - \`delete_task\` — Remove a task
 - \`add_column\` / \`rename_column\` / \`delete_column\` — Manage columns
 - \`bulk_update_tasks\` — Batch multiple updates in one call
+- \`move_task_to_board\` — Move task from one board to another (e.g., active → archive)
+
+### Knowledge
+- \`add_knowledge\` — Create a standalone knowledge note (\`knowledge:true\`) with topic, content, and tags
+- \`update_knowledge\` — Update content, learnings, or tags on existing knowledge notes
+- \`find_knowledge\` — Search all boards for knowledge notes and learnings, filterable by tags
+- \`synthesize_topic\` — Aggregate all knowledge about a topic into a structured brief
+- \`import_memories\` — Batch-import memories/knowledge from AI platforms as structured notes
 
 ### Cleanup
 - \`archive_completed_tasks\` — Bulk-archive done tasks with optional age/column filters
@@ -96,28 +105,35 @@ A plain paragraph here is the task's **description** — background context expl
 
 1. **Always identify yourself.** Pass \`agentName\` when creating or updating tasks so contributions are tracked via \`built-by:\`.
 
-2. **Search before creating.** Use \`search_tasks\` to check for duplicates. Use \`search_context\` to find relevant past learnings before starting work.
+2. **Search before creating.** Use \`search_tasks\` to check for duplicates. Use \`search_context\` and \`find_knowledge\` to find relevant past learnings before starting work.
 
 3. **Write good acceptance criteria.** Each line should be testable, binary (pass/fail). Write as observable behaviors, not implementation details.
 
 4. **Record learnings.** When completing a task, call \`update_learnings\` with insights, decisions, pitfalls. Use #tags for cross-referencing. This builds institutional knowledge for future agents and humans.
 
-5. **Decompose large tasks.** If a task has >5 subtasks or est >8h, break it into multiple tasks.
+5. **Capture knowledge.** Use \`add_knowledge\` for standalone decisions, patterns, and reference notes. These appear in the Memory view and are searchable across all boards.
 
-6. **Use metadata consistently.** Always set priority, add labels, provide estimates when creating tasks.
+6. **Decompose large tasks.** If a task has >5 subtasks or est >8h, break it into multiple tasks.
 
-7. **Fetch before mutating.** Call \`get_board\` first to see current state, column IDs, and task IDs.
+7. **Use metadata consistently.** Always set priority, add labels, provide estimates when creating tasks.
 
-8. **Prefer bulk_update_tasks** when making multiple changes to the same board.
+8. **Fetch before mutating.** Call \`get_board\` first to see current state, column IDs, and task IDs.
 
-9. **Respect column workflow.** Typical flow: Backlog → To Do → In Progress → Review → Done.
+9. **Prefer bulk_update_tasks** when making multiple changes to the same board.
+
+10. **Respect column workflow.** Typical flow: Backlog → To Do → In Progress → Review → Done.
+
+11. **Use board lifecycle.** Each board has Active → Backlog / Archive. Use \`move_task_to_board\` for cross-board movement.
 
 ## Common Workflows
 
-- **Start work:** \`get_board\` → find task → \`move_task\` to "In Progress" → \`search_context\` for related learnings
+- **Start work:** \`get_board\` → find task → \`move_task\` to "In Progress" → \`find_knowledge\` for related learnings
 - **Complete work:** \`toggle_task\` → \`update_learnings\` → \`move_task\` to "Done"
-- **Create feature:** \`search_context\` for related work → \`add_task\` with description + AC → \`update_task_metadata\`
-- **Find knowledge:** \`search_context\` with keywords to find past decisions, learnings, AC`,
+- **Create feature:** \`find_knowledge\` for related work → \`add_task\` with description + AC → \`update_task_metadata\`
+- **Find knowledge:** \`find_knowledge\` with query/tags to find knowledge notes + learnings across all boards
+- **Capture knowledge:** \`add_knowledge\` for standalone decisions, patterns, references with #tags
+- **Import memories:** Use \`import_memories\` to bring in knowledge from other AI platforms (Claude, ChatGPT, etc.)
+- **Synthesize:** \`synthesize_topic\` to get a comprehensive brief about any topic across all boards`,
         },
       }],
     }

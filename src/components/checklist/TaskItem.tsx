@@ -8,9 +8,10 @@ import { Trash2, Maximize2, Archive } from 'lucide-react'
 
 interface TaskItemProps {
   task: Task
+  hideCompletion?: boolean
 }
 
-export function TaskItem({ task }: TaskItemProps) {
+export function TaskItem({ task, hideCompletion }: TaskItemProps) {
   const toggleTask = useDocumentStore((s) => s.toggleTask)
   const updateTaskContent = useDocumentStore((s) => s.updateTaskContent)
   const deleteTask = useDocumentStore((s) => s.deleteTask)
@@ -48,7 +49,7 @@ export function TaskItem({ task }: TaskItemProps) {
   return (
     <div>
       <div className={`group flex items-start gap-2.5 py-2 px-2 -mx-2 rounded-lg hover:bg-accent/40 transition-colors duration-150 ${task.metadata.archived ? 'opacity-50' : ''}`}>
-        {task.checked !== null && (
+        {task.checked !== null && !hideCompletion && (
           <Checkbox
             checked={task.checked}
             onCheckedChange={() => toggleTask(task.id)}
@@ -125,7 +126,7 @@ export function TaskItem({ task }: TaskItemProps) {
       {task.children.length > 0 && (
         <div className="ml-7 border-l-2 border-border/60 pl-3">
           {task.children.map((child) => (
-            <TaskItem key={child.id} task={child} />
+            <TaskItem key={child.id} task={child} hideCompletion={hideCompletion} />
           ))}
         </div>
       )}

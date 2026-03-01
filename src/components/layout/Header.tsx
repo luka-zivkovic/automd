@@ -7,15 +7,23 @@ import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, ChevronLeft, Activity, LogOut, BookOpen, Archive, Inbox } from 'lucide-react'
+import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut, Zap, Columns3, CheckSquare, FileText } from 'lucide-react'
 import { apiFetch, HAS_SERVER } from '@/lib/api'
-import type { BoardFile } from '@/lib/markdown/types'
 import { useActivityStore } from '@/store/activity-store'
+import { useBoardType } from '@/hooks/useBoardType'
+import { BoardTabs } from './BoardTabs'
 import { useAuthStore } from '@/store/auth-store'
 import { UserBadge } from '@/components/settings/UserBadge'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { ApiKeyManager } from '@/components/settings/ApiKeyManager'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
+import type { ItemType } from '@/lib/markdown/types'
+
+const TYPE_ICONS: Record<ItemType, React.ReactNode> = {
+  board: <Columns3 className="size-3.5 text-muted-foreground/50" />,
+  checklist: <CheckSquare className="size-3.5 text-muted-foreground/50" />,
+  note: <FileText className="size-3.5 text-muted-foreground/50" />,
+}
 
 export function Header() {
   const tasks = useDocumentStore((s) => s.tasks)
@@ -26,8 +34,11 @@ export function Header() {
   const { importFile } = useFileImport()
   const { exportFile } = useFileExport()
 
+  const activeView = useUiStore((s) => s.activeView)
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
+  const setActiveView = useUiStore((s) => s.setActiveView)
+  const setActiveProjectId = useUiStore((s) => s.setActiveProjectId)
 
   const files = useFilesStore((s) => s.files)
   const projects = useFilesStore((s) => s.projects)
@@ -37,33 +48,15 @@ export function Header() {
     ? projects.find((p) => p.id === activeFile.projectId)
     : null
 
-  const setActiveFile = useFilesStore((s) => s.setActiveFile)
-  const addOrUpdateFile = useFilesStore((s) => s.addOrUpdateFile)
+  const { boardType, parentBoardId } = useBoardType()
 
-  // Detect if active file is an archive/backlog board
-  const parentBoard = activeFile
-    ? files.find((f) => f.archiveBoardId === activeFileId || f.backlogBoardId === activeFileId)
-    : null
-  const isArchiveView = parentBoard ? parentBoard.archiveBoardId === activeFileId : false
-  const isBacklogView = parentBoard ? parentBoard.backlogBoardId === activeFileId : false
-
-  async function navigateToLinkedBoard(type: 'archive' | 'backlog') {
-    if (!HAS_SERVER || !activeFile) return
-    const result = await apiFetch<BoardFile>(`/files/${activeFile.id}/${type}`, { method: 'POST' })
-    if (!result.ok) return
-    const board = result.data
-    const fullResult = await apiFetch<{ markdown?: string; archiveBoardId?: string | null; backlogBoardId?: string | null }>(`/files/${board.id}`)
-    if (!fullResult.ok) return
-    const fullBoard: BoardFile = {
-      ...board,
-      markdown: fullResult.data?.markdown ?? '',
-      archiveBoardId: fullResult.data?.archiveBoardId ?? null,
-      backlogBoardId: fullResult.data?.backlogBoardId ?? null,
-    }
-    addOrUpdateFile(fullBoard)
-    addOrUpdateFile({ ...activeFile, [`${type}BoardId`]: board.id } as BoardFile)
-    setActiveFile(board.id)
-  }
+  // For archive/backlog views, show the parent board name in breadcrumb
+  const displayBoard = boardType !== 'active'
+    ? files.find((f) => f.id === parentBoardId)
+    : activeFile
+  const displayProject = displayBoard?.projectId
+    ? projects.find((p) => p.id === displayBoard.projectId)
+    : activeProject
 
   const activityOpen = useActivityStore((s) => s.isOpen)
   const setActivityOpen = useActivityStore((s) => s.setOpen)
@@ -76,14 +69,25 @@ export function Header() {
     useAuthStore.getState().clearAuth()
   }
 
+  const isFileView = activeView === 'editor' || activeView === 'checklist' || activeView === 'kanban'
   const completedCount = tasks.filter((t) => t.checked === true).length
   const totalCount = tasks.length
   const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
+  function handleGoHome() {
+    setActiveView('home')
+    setActiveProjectId(null)
+  }
+
+  function handleGoProject(projectId: string) {
+    setActiveView('project-home')
+    setActiveProjectId(projectId)
+  }
+
   return (
     <header className="shrink-0 relative z-10">
       <div className="flex items-center justify-between px-5 py-3 bg-background/80 backdrop-blur-md">
-        {/* Left side: sidebar toggle + logo + file name + progress */}
+        {/* Left side: sidebar toggle + logo + breadcrumb + progress */}
         <div className="flex items-center gap-5">
           {/* Sidebar toggle */}
           <Tooltip>
@@ -104,75 +108,56 @@ export function Header() {
             <TooltipContent>{sidebarOpen ? 'Close sidebar' : 'Open sidebar'}</TooltipContent>
           </Tooltip>
 
-          <div className="flex items-center gap-2.5">
+          <button onClick={handleGoHome} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <img src="/logo.png" alt="automd" className="size-7 rounded-lg" />
             <h1 className="font-display text-[22px] tracking-tight text-foreground italic">
               automd
             </h1>
-          </div>
+          </button>
 
-          {/* Active file name with project breadcrumb */}
-          {activeFile && (
+          {/* Breadcrumb */}
+          {activeView === 'memory' && (
             <>
               <div className="w-px h-4 bg-border" />
-              {parentBoard ? (
-                /* Back-to-parent breadcrumb for archive/backlog views */
-                <div className="flex items-center gap-1.5 min-w-0 max-w-[360px]">
-                  <button
-                    className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors truncate"
-                    onClick={() => setActiveFile(parentBoard.id)}
-                  >
-                    <ChevronLeft className="size-3 shrink-0" />
-                    {parentBoard.name}
-                  </button>
-                  <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
-                  <span className="text-sm font-medium text-foreground truncate flex items-center gap-1">
-                    {isArchiveView && <Archive className="size-3 shrink-0" />}
-                    {isBacklogView && <Inbox className="size-3 shrink-0" />}
-                    {isArchiveView ? 'Archive' : 'Backlog'}
-                  </span>
-                </div>
-              ) : (
-                /* Normal breadcrumb with archive/backlog pills */
-                <div className="flex items-center gap-1.5 min-w-0 max-w-[400px]">
-                  {activeProject && (
-                    <>
-                      <div className={`size-2 rounded-full shrink-0 ${getProjectColorClass(activeProject.color)}`} />
-                      <span className="text-sm font-medium text-muted-foreground truncate">
-                        {activeProject.name}
-                      </span>
-                      <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
-                    </>
-                  )}
-                  <span className="text-sm font-medium text-muted-foreground truncate">
-                    {activeFile.name}
-                  </span>
-                  {HAS_SERVER && (
-                    <div className="flex items-center gap-1 ml-1.5 shrink-0">
-                      {activeFile.archiveBoardId && (
-                        <button
-                          className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-muted-foreground transition-colors"
-                          onClick={() => navigateToLinkedBoard('archive')}
-                        >
-                          <Archive className="size-3" />
-                          Archive
-                        </button>
-                      )}
-                      <button
-                        className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-muted hover:bg-accent text-muted-foreground transition-colors"
-                        onClick={() => navigateToLinkedBoard('backlog')}
-                      >
-                        <Inbox className="size-3" />
-                        Backlog
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+              <span className="text-sm font-medium text-muted-foreground">Memory</span>
             </>
           )}
 
-          {totalCount > 0 && (
+          {activeView === 'project-home' && displayProject && (
+            <>
+              <div className="w-px h-4 bg-border" />
+              <div className="flex items-center gap-1.5">
+                <div className={`size-2 rounded-full shrink-0 ${getProjectColorClass(displayProject.color)}`} />
+                <span className="text-sm font-medium text-muted-foreground">{displayProject.name}</span>
+              </div>
+            </>
+          )}
+
+          {isFileView && displayBoard && (
+            <>
+              <div className="w-px h-4 bg-border" />
+              <div className="flex items-center gap-1.5 min-w-0 max-w-[400px]">
+                {displayProject && (
+                  <>
+                    <div className={`size-2 rounded-full shrink-0 ${getProjectColorClass(displayProject.color)}`} />
+                    <button
+                      onClick={() => handleGoProject(displayProject.id)}
+                      className="text-sm font-medium text-muted-foreground truncate hover:text-foreground transition-colors"
+                    >
+                      {displayProject.name}
+                    </button>
+                    <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
+                  </>
+                )}
+                {TYPE_ICONS[displayBoard.itemType ?? 'board']}
+                <span className="text-sm font-medium text-muted-foreground truncate">
+                  {displayBoard.name}
+                </span>
+              </div>
+            </>
+          )}
+
+          {isFileView && totalCount > 0 && (
             <div className="flex items-center gap-2.5">
               <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div
@@ -218,10 +203,10 @@ export function Header() {
                 onClick={() => useUiStore.getState().setPromptsLibraryOpen(true)}
                 className="text-muted-foreground hover:text-foreground"
               >
-                <BookOpen className="size-4" />
+                <Zap className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>AI Prompts</TooltipContent>
+            <TooltipContent>AI Workflows (Ctrl+Shift+P)</TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -241,51 +226,56 @@ export function Header() {
             <TooltipContent>Activity feed</TooltipContent>
           </Tooltip>
 
-          <div className="w-px h-4 bg-border mx-1" />
+          {isFileView && (
+            <>
+              <div className="w-px h-4 bg-border mx-1" />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
-                <Undo2 className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
-          </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
+                    <Undo2 className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+              </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
-                <Redo2 className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
-          </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={redo} disabled={!canRedo} className="text-muted-foreground hover:text-foreground disabled:opacity-30">
+                    <Redo2 className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+              </Tooltip>
 
-          <div className="w-px h-4 bg-border mx-1" />
+              <div className="w-px h-4 bg-border mx-1" />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={importFile} className="text-muted-foreground hover:text-foreground">
-                <Upload className="size-4" />
-                <span className="hidden md:inline text-xs">Import</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Import markdown file (Ctrl+O)</TooltipContent>
-          </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={importFile} className="text-muted-foreground hover:text-foreground">
+                    <Upload className="size-4" />
+                    <span className="hidden md:inline text-xs">Import</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Import markdown file (Ctrl+O)</TooltipContent>
+              </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={exportFile} className="text-muted-foreground hover:text-foreground">
-                <Download className="size-4" />
-                <span className="hidden md:inline text-xs">Export</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Export markdown file (Ctrl+S)</TooltipContent>
-          </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={exportFile} className="text-muted-foreground hover:text-foreground">
+                    <Download className="size-4" />
+                    <span className="hidden md:inline text-xs">Export</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Export markdown file (Ctrl+S)</TooltipContent>
+              </Tooltip>
+            </>
+          )}
         </div>
       </div>
       {/* Accent line */}
       <div className="h-px header-accent-line" />
+      <BoardTabs />
     </header>
   )
 }

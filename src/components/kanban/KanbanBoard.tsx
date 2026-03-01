@@ -17,6 +17,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useDocumentStore } from '@/store/document-store'
 import { useFilteredColumns } from '@/hooks/useFilteredColumns'
+import { useBoardType } from '@/hooks/useBoardType'
 import type { Task } from '@/lib/markdown/types'
 import { KanbanColumn } from './KanbanColumn'
 import { KanbanCard } from './KanbanCard'
@@ -26,6 +27,7 @@ import { Columns3 } from 'lucide-react'
 export function KanbanBoard() {
   const columns = useDocumentStore((s) => s.columns)
   const moveTask = useDocumentStore((s) => s.moveTask)
+  const { boardType } = useBoardType()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
 
   const filteredColumns = useFilteredColumns(columns)
@@ -149,7 +151,7 @@ export function KanbanBoard() {
             <KanbanColumn key={col.id} column={col} columnIndex={idx} totalColumns={filteredColumns.length} />
           ))}
 
-          <AddColumnButton />
+          {boardType === 'active' && <AddColumnButton />}
 
           {columns.length === 0 && (
             <div className="flex items-center justify-center w-full">

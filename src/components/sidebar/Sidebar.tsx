@@ -23,7 +23,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileListItem } from './FileListItem'
-import { CreateFileButton } from './CreateFileButton'
+import { SidebarNav } from './SidebarNav'
+import { CreateItemMenu } from './CreateItemMenu'
 import { ProjectSection } from './ProjectSection'
 import { CreateProjectDialog } from './CreateProjectDialog'
 import { FolderPlus } from 'lucide-react'
@@ -83,6 +84,17 @@ export function Sidebar() {
   const activeFileId = useFilesStore((s) => s.activeFileId)
   const moveFileToProject = useFilesStore((s) => s.moveFileToProject)
   const reorderFiles = useFilesStore((s) => s.reorderFiles)
+
+  // When viewing archive/backlog, highlight parent board in sidebar
+  const effectiveActiveFileId = useMemo(() => {
+    if (!activeFileId) return null
+    for (const f of files) {
+      if (f.archiveBoardId === activeFileId || f.backlogBoardId === activeFileId) {
+        return f.id
+      }
+    }
+    return activeFileId
+  }, [activeFileId, files])
 
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [activeDragFile, setActiveDragFile] = useState<BoardFile | null>(null)
@@ -241,9 +253,14 @@ export function Sidebar() {
       style={{ width: sidebarOpen ? 240 : 0 }}
     >
       <div className="w-[240px] h-full flex flex-col">
+        {/* Pinned navigation */}
+        <SidebarNav />
+
+        <div className="mx-2 h-px bg-border/50" />
+
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Boards</h2>
+        <div className="flex items-center justify-between px-4 py-2">
+          <h2 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Projects</h2>
           <div className="flex items-center gap-0.5">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -253,12 +270,12 @@ export function Sidebar() {
                   onClick={() => setShowCreateProject(true)}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  <FolderPlus className="size-4" />
+                  <FolderPlus className="size-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">New Project</TooltipContent>
             </Tooltip>
-            <CreateFileButton />
+            <CreateItemMenu />
           </div>
         </div>
 
@@ -270,7 +287,7 @@ export function Sidebar() {
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="p-2 flex flex-col gap-0.5">
+            <div className="px-2 pb-2 flex flex-col gap-0.5">
               {/* Create project inline form */}
               {showCreateProject && (
                 <CreateProjectDialog onClose={() => setShowCreateProject(false)} />
@@ -282,7 +299,7 @@ export function Sidebar() {
                   key={project.id}
                   project={project}
                   files={filesByProject.get(project.id) ?? []}
-                  activeFileId={activeFileId}
+                  activeFileId={effectiveActiveFileId}
                 />
               ))}
 
@@ -295,14 +312,14 @@ export function Sidebar() {
               <UngroupedDropZone
                 ungroupedFiles={ungroupedFiles}
                 ungroupedFileIds={ungroupedFileIds}
-                activeFileId={activeFileId}
+                activeFileId={effectiveActiveFileId}
                 hasProjects={projects.length > 0}
               />
 
               {/* Empty state */}
               {visibleFiles.length === 0 && projects.length === 0 && (
                 <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-                  No boards yet. Create one to get started.
+                  No items yet. Create one to get started.
                 </p>
               )}
             </div>

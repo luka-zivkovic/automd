@@ -18,7 +18,7 @@ projectsRouter.get('/', (_req, res, next) => {
 
 // Create a project
 projectsRouter.post('/', async (req, res, next) => {
-  const { name, color } = req.body
+  const { name, color, id: clientId } = req.body
   if (!name || !isValidName(name)) {
     res.status(400).json({ error: 'name is required (max 200 characters)' })
     return
@@ -26,7 +26,7 @@ projectsRouter.post('/', async (req, res, next) => {
 
   try {
     const project = await withWriteLock(() => {
-      const id = nanoid(10)
+      const id = (clientId && typeof clientId === 'string' && clientId.length <= 30) ? clientId : nanoid(10)
       return storage.createProject(id, name, color ?? '#3b82f6')
     })
 

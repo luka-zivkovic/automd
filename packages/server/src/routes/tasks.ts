@@ -9,6 +9,7 @@ import {
   updateTaskMetadata,
   updateAcceptanceCriteria,
   updateLearnings,
+  updateTaskDescription,
   deleteTask,
   extractTaskBlock,
   insertTaskBlock,
@@ -168,6 +169,9 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
           break
         case 'updateLearnings':
           newAst = updateLearnings(ast, taskId, learnings ?? null)
+          break
+        case 'updateDescription':
+          newAst = updateTaskDescription(ast, taskId, req.body.description ?? null)
           break
         default:
           return { status: 400 as const, error: `Unknown action: ${action}` }

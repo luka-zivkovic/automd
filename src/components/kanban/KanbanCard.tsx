@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress'
 import type { Task } from '@/lib/markdown/types'
 import { GripVertical, Archive } from 'lucide-react'
 import { TaskMetadataDisplay } from './TaskMetadataDisplay'
+import { useBoardVocabulary } from '@/hooks/useBoardVocabulary'
 
 interface KanbanCardProps {
   task: Task
@@ -19,6 +20,7 @@ export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
   const toggleTask = useDocumentStore((s) => s.toggleTask)
   const cardDisplay = usePreferencesStore((s) => s.cardDisplay)
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId)
+  const { getGroupForLabel, hideCompletion } = useBoardVocabulary()
   const pointerStart = useRef<{ x: number; y: number } | null>(null)
 
   const {
@@ -78,7 +80,7 @@ export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
           <GripVertical className="size-3.5" />
         </div>
 
-        {task.checked !== null && (
+        {task.checked !== null && !hideCompletion && (
           <Checkbox
             checked={task.checked}
             onCheckedChange={() => toggleTask(task.id)}
@@ -104,7 +106,7 @@ export function KanbanCard({ task, isDragOverlay = false }: KanbanCardProps) {
         </span>
       </div>
 
-      <TaskMetadataDisplay metadata={task.metadata} prefs={cardDisplay} />
+      <TaskMetadataDisplay metadata={task.metadata} prefs={cardDisplay} getGroupForLabel={getGroupForLabel} />
 
       {subtaskCount > 0 && cardDisplay.showSubtaskProgress && (
         <div className="mt-2 ml-9 flex items-center gap-2">

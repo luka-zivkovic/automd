@@ -81,7 +81,7 @@ filesRouter.get('/:id', (req, res, next) => {
 
 // Create a new board
 filesRouter.post('/', async (req, res, next) => {
-  const { name, markdown, projectId } = req.body
+  const { name, markdown, projectId, id: clientId, itemType } = req.body
   if (!name || !isValidName(name)) {
     res.status(400).json({ error: 'name is required (max 200 characters)' })
     return
@@ -89,8 +89,8 @@ filesRouter.post('/', async (req, res, next) => {
 
   try {
     const file = await withWriteLock(() => {
-      const id = nanoid(10)
-      return storage.createFile(id, name, markdown, projectId)
+      const id = (clientId && typeof clientId === 'string' && clientId.length <= 30) ? clientId : nanoid(10)
+      return storage.createFile(id, name, markdown, projectId, itemType)
     })
 
     const actor = req.body.actor || undefined

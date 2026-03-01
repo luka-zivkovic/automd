@@ -3,10 +3,12 @@ import { useUiStore } from '@/store/ui-store'
 import { useConnectionStore } from '@/store/connection-store'
 import { useAuthStore } from '@/store/auth-store'
 import { Header } from '@/components/layout/Header'
-import { DashboardView } from '@/components/dashboard/DashboardView'
+import { HomeView } from '@/components/home/HomeView'
+import { ProjectHomeView } from '@/components/home/ProjectHomeView'
 import { EditorView } from '@/components/editor/EditorView'
 import { ChecklistView } from '@/components/checklist/ChecklistView'
 import { KanbanView } from '@/components/kanban/KanbanView'
+import { MemoryView } from '@/components/memory/MemoryView'
 import { FileDropZone } from '@/components/editor/FileDropZone'
 import { TaskDetailPanel } from '@/components/detail/TaskDetailPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -119,6 +121,7 @@ function App() {
   }
 
   const showSkeleton = isLoading && HAS_SERVER
+  const isFileView = activeView === 'editor' || activeView === 'checklist' || activeView === 'kanban'
 
   return (
     <TooltipProvider>
@@ -133,16 +136,18 @@ function App() {
                 <LoadingSkeleton />
               ) : (
                 <>
-                  {activeView === 'dashboard' && <DashboardView />}
+                  {activeView === 'home' && <HomeView />}
+                  {activeView === 'project-home' && <ProjectHomeView />}
                   {activeView === 'editor' && <EditorView />}
                   {activeView === 'checklist' && <ChecklistView />}
                   {activeView === 'kanban' && <KanbanView />}
+                  {activeView === 'memory' && <MemoryView />}
                 </>
               )}
             </main>
             <ActivityFeed />
           </div>
-          <TaskDetailPanel />
+          {isFileView && <TaskDetailPanel />}
         </div>
         <Toaster position="bottom-right" />
         <CommandPalette />

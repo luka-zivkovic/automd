@@ -11,6 +11,7 @@ export interface TaskMetadata {
   archived: boolean
   completedAt: string | null
   archivedAt: string | null
+  knowledge: boolean
 }
 
 export interface Task {
@@ -39,6 +40,18 @@ export interface RetentionConfig {
   deleteArchivedAfter?: number
 }
 
+export interface LabelGroupDef {
+  options: string[]
+  style?: 'badge' | 'pipeline' | 'dot'
+}
+
+export interface BoardVocabulary {
+  item_label?: string
+  groups?: Record<string, LabelGroupDef>
+  views?: string[]
+  hide_completion?: boolean
+}
+
 export interface BoardMeta {
   board?: string
   project?: string
@@ -48,6 +61,7 @@ export interface BoardMeta {
   retention?: RetentionConfig
   archiveFor?: string
   backlogFor?: string
+  vocabulary?: BoardVocabulary
 }
 
 export interface DocumentState {
@@ -64,6 +78,8 @@ export interface IdCache {
   ids: Map<string, string> // id -> fingerprint
 }
 
+export type ItemType = 'board' | 'checklist' | 'note'
+
 export interface BoardFile {
   id: string
   name: string
@@ -73,6 +89,7 @@ export interface BoardFile {
   projectId: string | null
   archiveBoardId: string | null
   backlogBoardId: string | null
+  itemType: ItemType
 }
 
 export interface Project {

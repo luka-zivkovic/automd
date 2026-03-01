@@ -9,6 +9,7 @@ export type {
   IdCache,
   BoardFile,
   Project,
+  ItemType,
 } from './types.js'
 
 // Parser & Serializer
@@ -60,4 +61,4 @@ export { DEFAULT_MARKDOWN } from './default-document.js'
 
 // Prompt Catalog
 export { PROMPT_CATALOG, PROMPT_CATEGORIES } from './prompt-catalog.js'
-export type { PromptDefinition } from './prompt-catalog.js'
+export type { PromptDefinition, PlaceholderDef } from './prompt-catalog.js'

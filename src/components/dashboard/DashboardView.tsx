@@ -109,10 +109,18 @@ function BoardCard({ board }: { board: BoardSummary }) {
         <Separator />
         <div className="p-4 pt-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Progress value={board.completionPercent} className="w-20 h-1" />
-            <span className="text-[11px] tabular-nums text-muted-foreground">
-              {board.completedCount}/{board.taskCount}
-            </span>
+            {board.hideCompletion ? (
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                {board.taskCount} {board.itemLabel.toLowerCase()}{board.taskCount !== 1 ? 's' : ''}
+              </span>
+            ) : (
+              <>
+                <Progress value={board.completionPercent} className="w-20 h-1" />
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  {board.completedCount}/{board.taskCount}
+                </span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {board.overdueCount > 0 && (

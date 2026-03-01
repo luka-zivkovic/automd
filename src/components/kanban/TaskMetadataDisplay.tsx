@@ -12,9 +12,10 @@ import { Calendar, Clock } from 'lucide-react'
 interface TaskMetadataDisplayProps {
   metadata: TaskMetadata
   prefs: CardDisplayPreferences
+  getGroupForLabel?: (label: string) => { group: string; value: string } | null
 }
 
-export function TaskMetadataDisplay({ metadata, prefs }: TaskMetadataDisplayProps) {
+export function TaskMetadataDisplay({ metadata, prefs, getGroupForLabel }: TaskMetadataDisplayProps) {
   const hasLabels = prefs.showLabels && metadata.labels.length > 0
   const hasAssignees = prefs.showAssignees && metadata.assignees.length > 0
   const hasDueDate = prefs.showDueDate && metadata.dueDate !== null
@@ -45,6 +46,18 @@ export function TaskMetadataDisplay({ metadata, prefs }: TaskMetadataDisplayProp
           )}
           {hasLabels &&
             metadata.labels.map((label) => {
+              const group = getGroupForLabel?.(label)
+              if (group) {
+                // Grouped label — render as pipeline/badge style
+                return (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 capitalize"
+                  >
+                    {group.value.replace(/-/g, ' ')}
+                  </span>
+                )
+              }
               const color = getLabelColor(label)
               return (
                 <span

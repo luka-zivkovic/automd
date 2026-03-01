@@ -5,9 +5,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { useFilesStore } from '@/store/files-store'
+import { useUiStore } from '@/store/ui-store'
 import { FileListItem } from './FileListItem'
+import { CreateItemMenu } from './CreateItemMenu'
 import { Button } from '@/components/ui/button'
-import { ChevronRight, Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Pencil, Trash2, Home } from 'lucide-react'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 
@@ -25,11 +27,10 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
   const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const createFile = useFilesStore((s) => s.createFile)
-  const setActiveFile = useFilesStore((s) => s.setActiveFile)
-  const moveFileToProject = useFilesStore((s) => s.moveFileToProject)
   const renameProject = useFilesStore((s) => s.renameProject)
   const deleteProject = useFilesStore((s) => s.deleteProject)
+  const setActiveView = useUiStore((s) => s.setActiveView)
+  const setActiveProjectId = useUiStore((s) => s.setActiveProjectId)
 
   // Make the project file list area a droppable zone
   const { setNodeRef, isOver } = useDroppable({
@@ -65,16 +66,11 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
     }
   }, [isRenaming])
 
-  const handleCreateFileInProject = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      const fileId = createFile('Untitled Board')
-      moveFileToProject(fileId, project.id)
-      setActiveFile(fileId)
-      setCollapsed(false)
-    },
-    [createFile, moveFileToProject, setActiveFile, project.id]
-  )
+  const handleGoProjectHome = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setActiveView('project-home')
+    setActiveProjectId(project.id)
+  }, [setActiveView, setActiveProjectId, project.id])
 
   const commitRename = useCallback(() => {
     const trimmed = renameValue.trim()
@@ -164,10 +160,11 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
               variant="ghost"
               size="icon-xs"
               className="size-5 text-muted-foreground hover:text-foreground"
-              onClick={handleCreateFileInProject}
+              onClick={handleGoProjectHome}
             >
-              <Plus className="size-3" />
+              <Home className="size-3" />
             </Button>
+            <CreateItemMenu projectId={project.id} className="size-5 text-muted-foreground hover:text-foreground" />
             <Button
               variant="ghost"
               size="icon-xs"
@@ -227,7 +224,7 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
               <p className={`text-[11px] px-2 py-2 ${
                 isOver ? 'text-primary/70' : 'text-muted-foreground/60'
               }`}>
-                {isOver ? 'Drop here...' : 'No boards in this project.'}
+                {isOver ? 'Drop here...' : 'No items in this project.'}
               </p>
             )}
             {files.map((file) => (

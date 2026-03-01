@@ -46,6 +46,10 @@ export function serializeMetadata(
     tokens.push('archived:true')
   }
 
+  if (metadata.knowledge) {
+    tokens.push('knowledge:true')
+  }
+
   if (tokens.length === 0) return displayContent
   return `${displayContent} ${tokens.join(' ')}`
 }

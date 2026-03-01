@@ -5,6 +5,7 @@ import { useActivityStore, type ActivityEvent } from '@/store/activity-store'
 import { parseMarkdown } from '@/lib/markdown/parser'
 import { annotateIds, createIdCache } from '@/lib/markdown/id-annotator'
 import { extractTasksAndColumns } from '@/lib/markdown/task-extractor'
+import { extractFrontmatter } from '@automd/shared'
 import { getDueDateStatus } from '@/lib/utils/metadata-colors'
 import type { Task, Column } from '@/lib/markdown/types'
 
@@ -27,6 +28,8 @@ export interface BoardSummary {
   overdueCount: number
   lastUpdated: number
   columnCount: number
+  itemLabel: string
+  hideCompletion: boolean
 }
 
 export interface DashboardData {
@@ -68,9 +71,10 @@ export function useDashboardData(): DashboardData {
         const cache = createIdCache()
         const annotated = annotateIds(ast, cache)
         const { tasks, columns } = extractTasksAndColumns(annotated)
-        return { file, tasks, columns }
+        const meta = extractFrontmatter(annotated)
+        return { file, tasks, columns, meta }
       } catch {
-        return { file, tasks: [] as Task[], columns: [] as Column[] }
+        return { file, tasks: [] as Task[], columns: [] as Column[], meta: null }
       }
     })
   }, [files])
@@ -99,7 +103,7 @@ export function useDashboardData(): DashboardData {
 
   // Board summaries
   const boards = useMemo<BoardSummary[]>(() => {
-    return parsedFiles.map(({ file, columns }) => {
+    return parsedFiles.map(({ file, columns, meta }) => {
       const project = projects.find((p) => p.id === file.projectId)
       let taskCount = 0
       let completedCount = 0
@@ -133,6 +137,8 @@ export function useDashboardData(): DashboardData {
         overdueCount,
         lastUpdated: file.updatedAt,
         columnCount: columns.length,
+        itemLabel: meta?.vocabulary?.item_label ?? 'Task',
+        hideCompletion: meta?.vocabulary?.hide_completion ?? false,
       }
     })
   }, [parsedFiles, projects])

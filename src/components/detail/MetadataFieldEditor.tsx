@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useDocumentStore } from '@/store/document-store'
 import { useKnownAssignees, useKnownLabels } from '@/lib/selectors'
+import { useBoardVocabulary } from '@/hooks/useBoardVocabulary'
 import { getLabelColor, getAvatarColor, getInitials } from '@/lib/utils/metadata-colors'
 import { Button } from '@/components/ui/button'
 import type { Task } from '@/lib/markdown/types'
@@ -15,13 +16,54 @@ export function MetadataFieldEditor({ taskId, task }: MetadataFieldEditorProps) 
   const updateTaskMetadata = useDocumentStore((s) => s.updateTaskMetadata)
   const knownAssignees = useKnownAssignees()
   const knownLabels = useKnownLabels()
+  const { labelGroups, getGroupForLabel } = useBoardVocabulary()
 
   function updateField(partial: Partial<typeof task.metadata>) {
     updateTaskMetadata(taskId, task.displayContent, partial)
   }
 
+  // Split labels into grouped (managed by selectors) vs ungrouped (shown in chip editor)
+  const { groupedValues, ungroupedLabels } = useMemo(() => {
+    const grouped = new Map<string, string>() // group name -> current value
+    const ungrouped: string[] = []
+    for (const label of task.metadata.labels) {
+      const match = getGroupForLabel(label)
+      if (match) {
+        grouped.set(match.group, match.value)
+      } else {
+        ungrouped.push(label)
+      }
+    }
+    return { groupedValues: grouped, ungroupedLabels: ungrouped }
+  }, [task.metadata.labels, getGroupForLabel])
+
+  function handleGroupChange(groupName: string, newValue: string | null) {
+    // Remove old label for this group, add new one
+    const newLabels = task.metadata.labels.filter((l) => {
+      const match = getGroupForLabel(l)
+      return !(match && match.group === groupName)
+    })
+    if (newValue) {
+      newLabels.push(`${groupName}-${newValue}`)
+    }
+    updateField({ labels: newLabels })
+  }
+
+  const hasGroups = Object.keys(labelGroups).length > 0
+
   return (
     <div className="space-y-4">
+      {/* Label Groups (from vocabulary) */}
+      {hasGroups && Object.entries(labelGroups).map(([groupName, groupDef]) => (
+        <MetadataRow key={groupName} label={groupName}>
+          <GroupSelector
+            options={groupDef.options}
+            value={groupedValues.get(groupName) ?? null}
+            onChange={(val) => handleGroupChange(groupName, val)}
+          />
+        </MetadataRow>
+      ))}
+
       {/* Assignees */}
       <MetadataRow label="Assignees">
         <ChipEditor
@@ -42,13 +84,21 @@ export function MetadataFieldEditor({ taskId, task }: MetadataFieldEditorProps) 
         />
       </MetadataRow>
 
-      {/* Labels */}
+      {/* Labels (ungrouped only when groups exist, all labels otherwise) */}
       <MetadataRow label="Labels">
         <ChipEditor
-          values={task.metadata.labels}
-          suggestions={knownLabels}
+          values={hasGroups ? ungroupedLabels : task.metadata.labels}
+          suggestions={knownLabels.filter((l) => !getGroupForLabel(l))}
           placeholder="Add label..."
-          onChange={(labels) => updateField({ labels })}
+          onChange={(labels) => {
+            if (hasGroups) {
+              // Preserve grouped labels, replace ungrouped
+              const grouped = task.metadata.labels.filter((l) => getGroupForLabel(l))
+              updateField({ labels: [...grouped, ...labels] })
+            } else {
+              updateField({ labels })
+            }
+          }}
           renderChip={(label) => {
             const colors = getLabelColor(label)
             return (
@@ -271,6 +321,37 @@ function ChipEditor({
           Add
         </button>
       )}
+    </div>
+  )
+}
+
+/* ── Group Selector (vocabulary label groups) ── */
+
+interface GroupSelectorProps {
+  options: string[]
+  value: string | null
+  onChange: (value: string | null) => void
+}
+
+function GroupSelector({ options, value, onChange }: GroupSelectorProps) {
+  return (
+    <div className="flex items-center flex-wrap gap-1">
+      {options.map((opt) => {
+        const isActive = value === opt
+        return (
+          <button
+            key={opt}
+            onClick={() => onChange(isActive ? null : opt)}
+            className={`inline-flex items-center rounded-md px-2 py-1 text-xs transition-all duration-150 border capitalize ${
+              isActive
+                ? 'border-primary/30 bg-primary/10 text-primary ring-1 ring-primary/20'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40'
+            }`}
+          >
+            {opt.replace(/-/g, ' ')}
+          </button>
+        )
+      })}
     </div>
   )
 }

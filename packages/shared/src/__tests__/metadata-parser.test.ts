@@ -200,6 +200,7 @@ describe('serializeMetadata', () => {
       archived: true,
       completedAt: '2025-04-01',
       archivedAt: '2025-04-15',
+      knowledge: false,
     }
     const result = serializeMetadata('Task', meta)
     expect(result).toBe(
@@ -221,6 +222,7 @@ describe('parseMetadata ↔ serializeMetadata round-trip', () => {
       archived: false,
       completedAt: null,
       archivedAt: null,
+      knowledge: false,
     }
     const serialized = serializeMetadata('Build feature', original)
     const { metadata, displayContent } = parseMetadata(serialized)

@@ -182,7 +182,7 @@ ${boardId ? boardContext : 'Scope: All boards'}
 
 ## Instructions
 
-1. Call \`search_context\` with the topic as query. Also try related keywords and synonyms.
+1. Call \`find_knowledge\` tool with the topic as query. Also call \`search_context\` with related keywords and synonyms.
 ${boardId ? '' : '2. If the topic relates to a specific label, also search by label.\n'}
 2. For each result found, extract:
    - **Learnings** — What was discovered? What worked or didn't?
@@ -198,6 +198,108 @@ ${boardId ? '' : '2. If the topic relates to a specific label, also search by la
    - **Gaps** — What the team should document but hasn't yet
 
 4. If no results found, say so clearly and suggest what to document.`,
+        },
+      }],
+    }
+  })
+
+  server.registerPrompt('import_memories', {
+    description: 'Import knowledge/memories from another AI platform (Claude, ChatGPT, etc.) into AutoMD',
+    argsSchema: {
+      rawText: z.string().describe('Paste your memories or knowledge entries here — numbered lists, bullet lists, or paragraphs'),
+      boardId: z.string().optional().describe('Board to import into (will create a Knowledge board if omitted)'),
+      source: z.string().optional().describe('Source platform name (e.g., "Claude", "ChatGPT", "Cursor")'),
+    },
+  }, async ({ rawText, boardId, source }) => {
+    let boardContext = ''
+    if (boardId) {
+      const board = await api.getFile(boardId)
+      boardContext = `\nTarget board: "${board.name}" (ID: ${boardId})`
+    }
+
+    return {
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: `You are a knowledge import specialist for AutoMD. Import these memories/knowledge entries into the system.
+
+Source: ${source ?? 'Unknown AI platform'}
+${boardContext || 'Target: Will create a new Knowledge board if needed'}
+
+## Raw memories to import:
+
+${rawText}
+
+## Instructions
+
+1. If no boardId was provided, create a new board using \`create_board\`:
+   - Name: "${source ? source + ' Knowledge' : 'Imported Knowledge'}"
+   - Include a "Knowledge" column and a "Learnings" column
+
+2. Call \`import_memories\` with the raw text to parse and batch-create knowledge notes.
+   - Pass source: "${source ?? 'imported'}" and appropriate default tags.
+
+3. Review the created entries and enhance the most important ones:
+   - Add more specific #tags using \`update_knowledge\`
+   - Expand terse entries with better descriptions
+   - Group related memories under the same tags
+
+4. Provide a summary:
+   - How many entries were imported
+   - Key themes identified
+   - Suggestions for organizing the knowledge further`,
+        },
+      }],
+    }
+  })
+
+  server.registerPrompt('synthesize_knowledge', {
+    description: 'Create a comprehensive knowledge brief about a topic by aggregating all relevant knowledge across boards',
+    argsSchema: {
+      topic: z.string().describe('Topic to synthesize knowledge about'),
+      boardId: z.string().optional().describe('Restrict to a specific board'),
+    },
+  }, async ({ topic, boardId }) => {
+    return {
+      messages: [{
+        role: 'user' as const,
+        content: {
+          type: 'text' as const,
+          text: `You are a knowledge synthesis specialist for AutoMD. Create a comprehensive brief about the given topic.
+
+Topic: ${topic}
+${boardId ? `Scope: Board ${boardId}` : 'Scope: All boards'}
+
+## Instructions
+
+1. Call \`synthesize_topic\` with the topic to get an aggregated view of all related knowledge.
+
+2. Also call \`find_knowledge\` with the topic and related keywords for additional context.
+
+3. Organize the findings into a structured knowledge brief:
+
+   **Executive Summary** (2-3 sentences)
+
+   **Key Knowledge** — Direct knowledge notes about this topic
+   - Source, content, and relevance rating
+
+   **Learnings from Tasks** — What was discovered while working
+   - Practical insights, what worked/didn't
+
+   **Decisions Made** — What approaches were chosen
+   - Decision, rationale, date if available
+
+   **Related Context** — Task descriptions that reference this topic
+   - Background context worth knowing
+
+   **Knowledge Gaps** — What's missing
+   - Questions that should be answered
+   - Areas where documentation is thin
+
+4. Rate overall knowledge coverage: Comprehensive / Adequate / Sparse / Missing
+
+5. Suggest specific knowledge entries to create using \`add_knowledge\` if gaps exist.`,
         },
       }],
     }

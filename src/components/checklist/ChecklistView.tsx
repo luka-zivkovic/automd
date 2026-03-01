@@ -1,6 +1,7 @@
 import { useDocumentStore } from '@/store/document-store'
 import { useUiStore } from '@/store/ui-store'
 import { useFilteredColumns } from '@/hooks/useFilteredColumns'
+import { useBoardVocabulary } from '@/hooks/useBoardVocabulary'
 import { Progress } from '@/components/ui/progress'
 import { TaskGroup } from './TaskGroup'
 import { FilterBar } from '@/components/search/FilterBar'
@@ -29,6 +30,7 @@ export function ChecklistView() {
   const columns = useDocumentStore((s) => s.columns)
 
   const filteredColumns = useFilteredColumns(columns)
+  const { hideCompletion, itemLabel } = useBoardVocabulary()
 
   const allTasks = filteredColumns.flatMap((c) => c.tasks)
   const totalCompleted = allTasks.filter((t) => t.checked === true).length
@@ -65,25 +67,27 @@ export function ChecklistView() {
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="max-w-2xl mx-auto px-6 py-8">
             {/* Overall progress */}
-            <div className="mb-8">
-              <div className="flex items-end justify-between mb-4">
-                <div>
-                  <h2 className="font-display text-3xl text-foreground italic">Progress</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {totalCompleted} of {totalTasks} tasks complete
-                  </p>
+            {!hideCompletion && (
+              <div className="mb-8">
+                <div className="flex items-end justify-between mb-4">
+                  <div>
+                    <h2 className="font-display text-3xl text-foreground italic">Progress</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {totalCompleted} of {totalTasks} {itemLabel.toLowerCase()}s complete
+                    </p>
+                  </div>
+                  <span className="text-3xl font-light tabular-nums text-gradient">
+                    {overallPercent}%
+                  </span>
                 </div>
-                <span className="text-3xl font-light tabular-nums text-gradient">
-                  {overallPercent}%
-                </span>
+                <Progress value={overallPercent} className="h-2" />
               </div>
-              <Progress value={overallPercent} className="h-2" />
-            </div>
+            )}
 
             {/* Task groups */}
             <div className="space-y-4 stagger-enter">
               {filteredColumns.map((col) => (
-                <TaskGroup key={col.id} column={col} />
+                <TaskGroup key={col.id} column={col} hideCompletion={hideCompletion} />
               ))}
             </div>
           </div>

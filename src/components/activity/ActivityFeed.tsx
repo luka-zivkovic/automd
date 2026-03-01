@@ -10,6 +10,7 @@ import {
   FolderPlus,
   Folder,
   FolderMinus,
+  Zap,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -32,6 +33,7 @@ const eventIcons: Record<string, LucideIcon> = {
   'project:created': FolderPlus,
   'project:updated': Folder,
   'project:deleted': FolderMinus,
+  'workflow:launched': Zap,
 }
 
 const eventColors: Record<string, string> = {
@@ -41,6 +43,7 @@ const eventColors: Record<string, string> = {
   'project:created': 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40',
   'project:updated': 'text-primary bg-primary/10',
   'project:deleted': 'text-destructive bg-destructive/10',
+  'workflow:launched': 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40',
 }
 
 function ActivityItem({ event }: { event: ActivityEvent }) {

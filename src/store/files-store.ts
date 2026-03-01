@@ -2,15 +2,16 @@ import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { nanoid } from 'nanoid'
-import type { BoardFile, Project } from '@/lib/markdown/types'
+import type { BoardFile, Project, ItemType } from '@/lib/markdown/types'
 import { DEFAULT_MARKDOWN } from '@/lib/markdown/default-document'
+import { apiFetch, HAS_SERVER } from '@/lib/api'
 
 interface FilesStore {
   files: BoardFile[]
   activeFileId: string | null
   projects: Project[]
 
-  createFile: (name: string, markdown?: string) => string
+  createFile: (name: string, markdown?: string, itemType?: ItemType) => string
   deleteFile: (fileId: string) => void
   renameFile: (fileId: string, name: string) => void
   updateFileMarkdown: (fileId: string, markdown: string) => void
@@ -33,9 +34,10 @@ export const useFilesStore = create<FilesStore>()(
         activeFileId: null as string | null,
         projects: [] as Project[],
 
-        createFile: (name: string, markdown?: string): string => {
+        createFile: (name: string, markdown?: string, itemType?: ItemType): string => {
           const id = nanoid()
           const now = Date.now()
+          const type = itemType ?? 'board'
           const file: BoardFile = {
             id,
             name,
@@ -45,10 +47,19 @@ export const useFilesStore = create<FilesStore>()(
             projectId: null,
             archiveBoardId: null,
             backlogBoardId: null,
+            itemType: type,
           }
           set((state) => {
             state.files.push(file)
           })
+
+          if (HAS_SERVER) {
+            apiFetch('/files', {
+              method: 'POST',
+              body: JSON.stringify({ id, name, markdown: file.markdown, itemType: type }),
+            }).catch((err) => console.error('[files-store] Failed to sync board to server:', err))
+          }
+
           return id
         },
 
@@ -117,6 +128,14 @@ export const useFilesStore = create<FilesStore>()(
           set((state) => {
             state.projects.push(project)
           })
+
+          if (HAS_SERVER) {
+            apiFetch('/projects', {
+              method: 'POST',
+              body: JSON.stringify({ id, name, color }),
+            }).catch((err) => console.error('[files-store] Failed to sync project to server:', err))
+          }
+
           return id
         },
 

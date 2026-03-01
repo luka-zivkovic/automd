@@ -115,12 +115,12 @@ export function CommandPalette() {
     // --- Quick actions ---
     const actions: PaletteItem[] = [
       {
-        id: 'action-dashboard',
+        id: 'action-home',
         type: 'action',
-        label: 'Switch to Dashboard',
+        label: 'Go Home',
         icon: <LayoutDashboard className="size-4 text-slate-500 dark:text-slate-400" />,
         action: () => {
-          setActiveView('dashboard')
+          setActiveView('home')
           close()
         },
       },

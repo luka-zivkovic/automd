@@ -1,11 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type ViewMode = 'dashboard' | 'editor' | 'checklist' | 'kanban'
+export type ViewMode = 'home' | 'project-home' | 'editor' | 'checklist' | 'kanban' | 'memory'
 
 interface UiStore {
   activeView: ViewMode
   setActiveView: (view: ViewMode) => void
+
+  activeProjectId: string | null
+  setActiveProjectId: (id: string | null) => void
 
   editorPanelWidth: number
   setEditorPanelWidth: (width: number) => void
@@ -29,13 +32,16 @@ interface UiStore {
 export const useUiStore = create<UiStore>()(
   persist(
     (set) => ({
-      activeView: 'editor',
+      activeView: 'home' as ViewMode,
       setActiveView: (view) => set({ activeView: view }),
+
+      activeProjectId: null as string | null,
+      setActiveProjectId: (id) => set({ activeProjectId: id }),
 
       editorPanelWidth: 50,
       setEditorPanelWidth: (width) => set({ editorPanelWidth: width }),
 
-      selectedTaskId: null,
+      selectedTaskId: null as string | null,
       setSelectedTaskId: (id) => set({ selectedTaskId: id }),
 
       sidebarOpen: false,
@@ -58,6 +64,14 @@ export const useUiStore = create<UiStore>()(
         sidebarOpen: state.sidebarOpen,
         showSplitEditor: state.showSplitEditor,
       }),
+      // Migrate persisted 'dashboard' → 'home'
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<UiStore>) }
+        if ((merged.activeView as string) === 'dashboard') {
+          merged.activeView = 'home'
+        }
+        return merged
+      },
     }
   )
 )

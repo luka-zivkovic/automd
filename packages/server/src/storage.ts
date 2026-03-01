@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { BoardFile, Project } from '@automd/shared'
+import type { BoardFile, Project, ItemType } from '@automd/shared'
 import { DEFAULT_MARKDOWN } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
 import { getAutomdDir } from './config.js'
@@ -28,6 +28,7 @@ interface ManifestEntry {
   updatedAt: number
   archiveBoardId?: string | null
   backlogBoardId?: string | null
+  itemType?: ItemType
 }
 
 interface Manifest {
@@ -134,6 +135,7 @@ export function listFiles(): BoardFile[] {
         projectId: f.projectId,
         archiveBoardId: f.archiveBoardId ?? null,
         backlogBoardId: f.backlogBoardId ?? null,
+        itemType: f.itemType ?? 'board',
       }
     })
   } catch (err) {
@@ -167,6 +169,7 @@ export function getFile(id: string): BoardFile | null {
       projectId: entry.projectId,
       archiveBoardId: entry.archiveBoardId ?? null,
       backlogBoardId: entry.backlogBoardId ?? null,
+      itemType: entry.itemType ?? 'board',
     }
   } catch (err) {
     if (err instanceof StorageError) throw err
@@ -179,6 +182,7 @@ export function createFile(
   name: string,
   markdown?: string,
   projectId?: string | null,
+  itemType?: ItemType,
 ): BoardFile {
   try {
     const manifest = readManifest()
@@ -186,19 +190,21 @@ export function createFile(
     const filename = uniqueFilename(name, existingFilenames)
     const now = Date.now()
     const content = markdown ?? DEFAULT_MARKDOWN
+    const type = itemType ?? 'board'
 
     const mdPath = safeBoardPath(filename)
     ensureDirs()
     fs.writeFileSync(mdPath, content, 'utf-8')
     syncFileToS3(mdPath, content).catch(() => {})
 
-    const entry = {
+    const entry: ManifestEntry = {
       id,
       name,
       filename,
       projectId: projectId ?? null,
       createdAt: now,
       updatedAt: now,
+      itemType: type,
     }
     manifest.files.push(entry)
     writeManifest(manifest)
@@ -212,6 +218,7 @@ export function createFile(
       projectId: projectId ?? null,
       archiveBoardId: null,
       backlogBoardId: null,
+      itemType: type,
     }
   } catch (err) {
     if (err instanceof StorageError) throw err
@@ -241,6 +248,7 @@ export function updateFileMarkdown(id: string, markdown: string): BoardFile | nu
       projectId: entry.projectId,
       archiveBoardId: entry.archiveBoardId ?? null,
       backlogBoardId: entry.backlogBoardId ?? null,
+      itemType: entry.itemType ?? 'board',
     }
   } catch (err) {
     if (err instanceof StorageError) throw err

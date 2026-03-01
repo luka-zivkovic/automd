@@ -1,10 +1,17 @@
+export interface PlaceholderDef {
+  token: string
+  type: 'board' | 'input'
+  label: string
+  multiline?: boolean
+}
+
 export interface PromptDefinition {
   id: string
   name: string
   description: string
   category: 'system' | 'workflow' | 'planning' | 'operations'
   prompt: string
-  placeholders: string[]
+  placeholders: PlaceholderDef[]
 }
 
 export const PROMPT_CATALOG: PromptDefinition[] = [
@@ -35,7 +42,9 @@ Available MCP Tools:
 - Reading: list_boards, get_board, get_task
 - Searching: search_context (searches descriptions, AC, learnings — not just titles)
 - Writing: create_board, add_task, update_task, move_task, update_acceptance_criteria, update_learnings, add_subtask, toggle_subtask
+- Knowledge: add_knowledge, update_knowledge, find_knowledge, synthesize_topic, import_memories
 - Metadata: update_task_metadata (set priority, labels, estimates, assignees)
+- Lifecycle: move_task_to_board (active ↔ archive/backlog)
 - Cleanup: archive_completed_tasks, delete_task
 
 Best Practices:
@@ -52,7 +61,10 @@ Best Practices:
     name: 'Decompose Task',
     description: 'Break a feature or epic into structured, implementable tasks',
     category: 'workflow',
-    placeholders: ['BOARD NAME', 'FEATURE DESCRIPTION'],
+    placeholders: [
+      { token: 'BOARD NAME', type: 'board', label: 'Board' },
+      { token: 'FEATURE DESCRIPTION', type: 'input', label: 'Feature description' },
+    ],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to decompose a feature into tasks on my [BOARD NAME] board.
@@ -83,7 +95,7 @@ Guidelines:
     name: 'Write Acceptance Criteria',
     description: 'Scan tasks and generate testable acceptance criteria for those missing them',
     category: 'workflow',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to write acceptance criteria for tasks on my [BOARD NAME] board.
@@ -107,7 +119,7 @@ Good AC guidelines:
     name: 'Kickoff Board',
     description: 'Scaffold a new project board with columns, initial tasks, and estimates',
     category: 'workflow',
-    placeholders: ['PROJECT DESCRIPTION'],
+    placeholders: [{ token: 'PROJECT DESCRIPTION', type: 'input', label: 'Project description' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to create a new board for this project:
@@ -134,7 +146,7 @@ Provide the full markdown in a single create_board call, then add AC for each ta
     name: 'Find Knowledge',
     description: 'Search past learnings and decisions across all boards',
     category: 'workflow',
-    placeholders: ['TOPIC'],
+    placeholders: [{ token: 'TOPIC', type: 'input', label: 'Topic' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to find everything the team knows about: [TOPIC]
@@ -151,6 +163,53 @@ Steps:
 
 If no results found, say so clearly and suggest what to document going forward.`,
   },
+  {
+    id: 'import_memories',
+    name: 'Import Memories',
+    description: 'Import knowledge from other AI platforms (Claude, ChatGPT, Cursor) into AutoMD',
+    category: 'workflow',
+    placeholders: [
+      { token: 'SOURCE PLATFORM', type: 'input', label: 'Source platform (e.g. Claude, ChatGPT, Cursor)' },
+      { token: 'PASTE MEMORIES HERE', type: 'input', label: 'Paste memories', multiline: true },
+    ],
+    prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
+
+I want to import my memories/knowledge from [SOURCE PLATFORM] into AutoMD.
+
+Here are my memories:
+[PASTE MEMORIES HERE]
+
+Steps:
+1. Use list_boards to check if a Knowledge board exists, or create one with create_board
+2. Call import_memories with the raw text, source platform name, and target board
+3. Review the imported entries and enhance the most important ones:
+   - Add specific #tags using update_knowledge
+   - Expand terse entries with better descriptions
+   - Group related memories under consistent tags
+4. Provide a summary: how many entries imported, key themes, and suggestions for organizing further`,
+  },
+  {
+    id: 'synthesize_knowledge',
+    name: 'Synthesize Knowledge',
+    description: 'Create a comprehensive knowledge brief about a topic from all boards',
+    category: 'workflow',
+    placeholders: [{ token: 'TOPIC', type: 'input', label: 'Topic' }],
+    prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
+
+I want a comprehensive knowledge brief about: [TOPIC]
+
+Steps:
+1. Call synthesize_topic with the topic to aggregate all related knowledge
+2. Call find_knowledge with the topic and related keywords for additional context
+3. Organize findings into:
+   - Executive Summary (2-3 sentences)
+   - Key Knowledge — direct knowledge notes
+   - Learnings from Tasks — practical insights
+   - Decisions Made — approaches chosen and rationale
+   - Knowledge Gaps — what's missing
+4. Rate overall coverage: Comprehensive / Adequate / Sparse / Missing
+5. Suggest specific knowledge entries to create if gaps exist`,
+  },
 
   // ─── Planning ────────────────────────────────────────────────────
   {
@@ -158,7 +217,7 @@ If no results found, say so clearly and suggest what to document going forward.`
     name: 'Sprint Planning',
     description: 'Analyze backlog and plan the next sprint based on priority and capacity',
     category: 'planning',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to help plan the next sprint for my [BOARD NAME] board.
@@ -181,7 +240,7 @@ Output a clear sprint plan with: selected tasks, total estimated hours, risks, a
     name: 'Estimate Tasks',
     description: 'Add calibrated time estimates to unestimated tasks',
     category: 'planning',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to estimate unestimated tasks on my [BOARD NAME] board.
@@ -207,7 +266,7 @@ Provide a summary: total estimated hours, high-uncertainty tasks, and comparison
     name: 'Dependency Analysis',
     description: 'Map task dependencies and find the critical path',
     category: 'planning',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to analyze dependencies on my [BOARD NAME] board.
@@ -235,7 +294,7 @@ Steps:
     name: 'Triage Tasks',
     description: 'Review and organize uncategorized or misplaced tasks',
     category: 'operations',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 I want you to triage tasks on my [BOARD NAME] board.
@@ -258,7 +317,7 @@ Don't make changes — just list recommendations for my review.`,
     name: 'Daily Standup',
     description: 'Generate a concise standup summary from the current board state',
     category: 'operations',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 Generate a daily standup report for my [BOARD NAME] board.
@@ -278,7 +337,7 @@ Format for a quick team sync — scannable, bullet-pointed, most important items
     name: 'Retrospective',
     description: 'Run a retrospective on completed work and generate action items',
     category: 'operations',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 Run a retrospective on my [BOARD NAME] board for the last 2 weeks.
@@ -303,7 +362,7 @@ Steps:
     name: 'Board Cleanup',
     description: 'Audit board hygiene — stale tasks, missing metadata, inconsistencies',
     category: 'operations',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 Audit the hygiene of my [BOARD NAME] board.
@@ -332,7 +391,7 @@ List all issues for my review — don't apply changes automatically.`,
     name: 'Handoff Summary',
     description: 'Generate a context-rich briefing document for team onboarding',
     category: 'operations',
-    placeholders: ['BOARD NAME'],
+    placeholders: [{ token: 'BOARD NAME', type: 'board', label: 'Board' }],
     prompt: `You have access to AutoMD, an AI-native task management platform, via MCP tools.
 
 Generate a handoff briefing for my [BOARD NAME] board.

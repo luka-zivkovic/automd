@@ -6,4 +6,5 @@ export type {
   IdCache,
   BoardFile,
   Project,
+  ItemType,
 } from '@automd/shared'

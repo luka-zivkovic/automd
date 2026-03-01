@@ -2,11 +2,23 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useFilesStore } from '@/store/files-store'
+import { useUiStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
-import { GripVertical, MoreHorizontal, Pencil, Trash2, Archive, Inbox } from 'lucide-react'
-import type { BoardFile } from '@/lib/markdown/types'
+import { GripVertical, MoreHorizontal, Pencil, Trash2, Columns3, CheckSquare, FileText } from 'lucide-react'
+import type { BoardFile, ItemType } from '@/lib/markdown/types'
 import { formatRelativeDate } from '@/lib/format-relative-date'
-import { apiFetch, HAS_SERVER } from '@/lib/api'
+
+const TYPE_ICONS: Record<ItemType, React.ReactNode> = {
+  board: <Columns3 className="size-3.5 text-muted-foreground/60" />,
+  checklist: <CheckSquare className="size-3.5 text-muted-foreground/60" />,
+  note: <FileText className="size-3.5 text-muted-foreground/60" />,
+}
+
+const DEFAULT_VIEWS: Record<ItemType, 'kanban' | 'checklist' | 'editor'> = {
+  board: 'kanban',
+  checklist: 'checklist',
+  note: 'editor',
+}
 
 interface FileListItemProps {
   file: BoardFile
@@ -18,12 +30,15 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
   const setActiveFile = useFilesStore((s) => s.setActiveFile)
   const renameFile = useFilesStore((s) => s.renameFile)
   const deleteFile = useFilesStore((s) => s.deleteFile)
+  const setActiveView = useUiStore((s) => s.setActiveView)
 
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(file.name)
   const [menuOpen, setMenuOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const itemType: ItemType = file.itemType ?? 'board'
 
   const {
     attributes,
@@ -67,8 +82,9 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
   const handleClick = useCallback(() => {
     if (!isRenaming) {
       setActiveFile(file.id)
+      setActiveView(DEFAULT_VIEWS[itemType])
     }
-  }, [file.id, isRenaming, setActiveFile])
+  }, [file.id, isRenaming, setActiveFile, setActiveView, itemType])
 
   const handleDoubleClick = useCallback(() => {
     setRenameValue(file.name)
@@ -101,36 +117,11 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
     deleteFile(file.id)
   }, [file.id, deleteFile])
 
-  const navigateToLinkedBoard = useCallback(async (type: 'archive' | 'backlog') => {
-    if (!HAS_SERVER) return
-    const result = await apiFetch<BoardFile>(`/files/${file.id}/${type}`, { method: 'POST' })
-    if (!result.ok) return
-    const board = result.data
-    // Fetch full markdown
-    const fullResult = await apiFetch<{ markdown?: string; archiveBoardId?: string | null; backlogBoardId?: string | null }>(`/files/${board.id}`)
-    if (!fullResult.ok) return
-    const fullBoard: BoardFile = {
-      ...board,
-      markdown: fullResult.data?.markdown ?? '',
-      archiveBoardId: fullResult.data?.archiveBoardId ?? null,
-      backlogBoardId: fullResult.data?.backlogBoardId ?? null,
-    }
-    useFilesStore.getState().addOrUpdateFile(fullBoard)
-    // Update parent's linked board ID
-    useFilesStore.getState().addOrUpdateFile({
-      ...file,
-      [`${type}BoardId`]: board.id,
-    } as BoardFile)
-    setActiveFile(board.id)
-  }, [file, setActiveFile])
-
   const handleStartRename = useCallback(() => {
     setMenuOpen(false)
     setRenameValue(file.name)
     setIsRenaming(true)
   }, [file.name])
-
-  const showSubLinks = HAS_SERVER && !isDragOverlay && !isRenaming
 
   return (
     <div>
@@ -139,7 +130,7 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
         style={isDragOverlay ? undefined : style}
         {...(isDragOverlay ? {} : attributes)}
         className={`
-          group relative flex items-center gap-1 px-2.5 py-2 rounded-md cursor-pointer
+          group relative flex items-center gap-1.5 px-2.5 py-2 rounded-md cursor-pointer
           transition-colors duration-150
           ${isDragOverlay
             ? 'bg-background border border-border shadow-lg ring-2 ring-primary/30 scale-[1.02]'
@@ -165,6 +156,11 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
             <GripVertical className="size-3" />
           </div>
         )}
+
+        {/* Type icon */}
+        <div className="shrink-0">
+          {TYPE_ICONS[itemType]}
+        </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -233,26 +229,6 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
           </div>
         )}
       </div>
-
-      {/* Sub-links: Archive & Backlog */}
-      {showSubLinks && (
-        <div className="pl-8 flex flex-col gap-0.5 mt-0.5">
-          <button
-            className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors py-0.5 text-left"
-            onClick={() => navigateToLinkedBoard('archive')}
-          >
-            <Archive className="size-3 shrink-0" />
-            Archive
-          </button>
-          <button
-            className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors py-0.5 text-left"
-            onClick={() => navigateToLinkedBoard('backlog')}
-          >
-            <Inbox className="size-3 shrink-0" />
-            Backlog
-          </button>
-        </div>
-      )}
     </div>
   )
 }

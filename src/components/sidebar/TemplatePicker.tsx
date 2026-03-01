@@ -5,6 +5,9 @@ import {
   FolderKanban,
   User,
   File,
+  Filter,
+  CalendarDays,
+  Brain,
   type LucideIcon,
 } from 'lucide-react'
 import type { BoardTemplate } from '@/lib/templates'
@@ -16,6 +19,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'folder-kanban': FolderKanban,
   user: User,
   file: File,
+  funnel: Filter,
+  'calendar-days': CalendarDays,
+  brain: Brain,
 }
 
 interface TemplatePickerProps {

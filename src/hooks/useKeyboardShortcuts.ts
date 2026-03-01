@@ -26,6 +26,14 @@ export function useKeyboardShortcuts() {
         return
       }
 
+      // Ctrl+Shift+P: toggle AI Workflows (prompts library) — works from anywhere
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+        e.preventDefault()
+        const current = useUiStore.getState().promptsLibraryOpen
+        useUiStore.getState().setPromptsLibraryOpen(!current)
+        return
+      }
+
       // Undo/Redo: allow from anywhere EXCEPT CodeMirror editor
       // (CodeMirror handles its own undo/redo internally)
       if (e.ctrlKey || e.metaKey) {
@@ -57,7 +65,7 @@ export function useKeyboardShortcuts() {
         switch (e.key) {
           case '1':
             e.preventDefault()
-            setActiveView('dashboard')
+            setActiveView('home')
             break
           case '2':
             e.preventDefault()

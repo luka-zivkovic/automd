@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useUiStore } from '@/store/ui-store'
 import { useDocumentStore } from '@/store/document-store'
 import { useFilesStore } from '@/store/files-store'
@@ -12,6 +12,8 @@ import { MetadataFieldEditor } from './MetadataFieldEditor'
 import { SubtaskList } from './SubtaskList'
 import { X, Trash2, Archive, Inbox, ArrowRight } from 'lucide-react'
 import { apiFetch, HAS_SERVER } from '@/lib/api'
+import { useBoardType } from '@/hooks/useBoardType'
+import { useBoardVocabulary } from '@/hooks/useBoardVocabulary'
 
 export function TaskDetailPanel() {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId)
@@ -23,6 +25,10 @@ export function TaskDetailPanel() {
 
   const activeFileId = useFilesStore((s) => s.activeFileId)
   const files = useFilesStore((s) => s.files)
+  const addOrUpdateFile = useFilesStore((s) => s.addOrUpdateFile)
+
+  const { boardType, parentBoardId } = useBoardType()
+  const { itemLabel } = useBoardVocabulary()
 
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [titleValue, setTitleValue] = useState('')
@@ -30,27 +36,6 @@ export function TaskDetailPanel() {
   const titleRef = useRef<HTMLInputElement>(null)
 
   const task = selectedTaskId ? taskMap.get(selectedTaskId) ?? null : null
-
-  // Determine board type: active, backlog, or archive
-  const boardType = useMemo(() => {
-    if (!activeFileId) return 'active' as const
-    for (const file of files) {
-      if (file.archiveBoardId === activeFileId) return 'archive' as const
-      if (file.backlogBoardId === activeFileId) return 'backlog' as const
-    }
-    return 'active' as const
-  }, [activeFileId, files])
-
-  // Find the parent board ID (the "active" board that owns this archive/backlog)
-  const parentBoardId = useMemo(() => {
-    if (boardType === 'active') return activeFileId
-    for (const file of files) {
-      if (file.archiveBoardId === activeFileId || file.backlogBoardId === activeFileId) {
-        return file.id
-      }
-    }
-    return null
-  }, [boardType, activeFileId, files])
 
   // Sync title from task when task changes
   useEffect(() => {
@@ -119,6 +104,15 @@ export function TaskDetailPanel() {
         })
         if (!result.ok) return
         targetBoardId = result.data.id
+
+        // Update parent board's linkage in local store
+        const parentFile = files.find((f) => f.id === parentBoardId)
+        if (parentFile) {
+          addOrUpdateFile({
+            ...parentFile,
+            [`${targetType}BoardId`]: targetBoardId,
+          })
+        }
       }
 
       if (!targetBoardId || targetBoardId === activeFileId) return
@@ -157,7 +151,7 @@ export function TaskDetailPanel() {
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Task Detail
+            {itemLabel} Detail
           </span>
           <Button
             variant="ghost"

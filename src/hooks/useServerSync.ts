@@ -83,6 +83,7 @@ export function useServerSync() {
                 projectId: summary.projectId,
                 archiveBoardId: (summary as Record<string, unknown>).archiveBoardId as string | null ?? null,
                 backlogBoardId: (summary as Record<string, unknown>).backlogBoardId as string | null ?? null,
+                itemType: ((summary as Record<string, unknown>).itemType as string as BoardFile['itemType']) ?? 'board',
               }
               // Track confirmed markdown
               confirmedMarkdownRef.current.set(file.id, file.markdown)
@@ -188,6 +189,7 @@ export function useServerSync() {
                     projectId: file.projectId,
                     archiveBoardId: (file as Record<string, unknown>).archiveBoardId as string | null ?? null,
                     backlogBoardId: (file as Record<string, unknown>).backlogBoardId as string | null ?? null,
+                    itemType: ((file as Record<string, unknown>).itemType as string as BoardFile['itemType']) ?? 'board',
                   }],
                 }))
                 confirmedMarkdownRef.current.set(file.id, file.markdown)
