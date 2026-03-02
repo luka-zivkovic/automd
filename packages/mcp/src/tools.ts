@@ -2,6 +2,31 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { api } from './api-client.js'
 
+/** Lightweight types matching server API response shapes */
+interface ApiTask {
+  id: string
+  content: string
+  displayContent: string
+  checked: boolean | null
+  metadata: Record<string, unknown> & {
+    assignees: string[]
+    labels: string[]
+    archived?: boolean
+    completedAt?: string | null
+    knowledge?: boolean
+    builtBy?: string | null
+  }
+  description: string | null
+  acceptanceCriteria: string | null
+  learnings: string | null
+}
+
+interface ApiColumn {
+  id: string
+  title: string
+  tasks: ApiTask[]
+}
+
 function text(content: string) {
   return { content: [{ type: 'text' as const, text: content }] }
 }
@@ -277,8 +302,8 @@ export function registerTools(server: McpServer) {
     try {
       const board = await api.getFile(boardId)
       const task = board.columns
-        .flatMap((c: { tasks: Array<{ id: string; displayContent: string; metadata: Record<string, unknown> }> }) => c.tasks)
-        .find((t: { id: string }) => t.id === taskId)
+        .flatMap((c: ApiColumn) => c.tasks)
+        .find((t: ApiTask) => t.id === taskId)
 
       if (!task) return text('Task not found')
 
@@ -558,7 +583,7 @@ export function registerTools(server: McpServer) {
     try {
       const allBoards = await api.listFiles()
       const projectBoards = allBoards.filter(
-        (b: { projectId: string | null }) => b.projectId === projectId,
+        (b: { projectId: string | null }) => b.projectId === projectId
       )
       return json(projectBoards)
     } catch (err) {
@@ -644,8 +669,8 @@ export function registerTools(server: McpServer) {
       if (labels !== undefined) {
         // Fetch current task to preserve displayContent
         const board = await api.getFile(boardId)
-        const allTasks = board.columns.flatMap((c: { tasks: unknown[] }) => c.tasks)
-        const task = allTasks.find((t: { id: string }) => t.id === taskId)
+        const allTasks = board.columns.flatMap((c: ApiColumn) => c.tasks)
+        const task = allTasks.find((t: ApiTask) => t.id === taskId)
         if (task) {
           await api.updateTask(boardId, taskId, {
             action: 'updateMetadata',
@@ -823,7 +848,7 @@ export function registerTools(server: McpServer) {
       let archived = 0
       const errors: string[] = []
 
-      for (const column of board.columns) {
+      for (const column of board.columns as ApiColumn[]) {
         if (columnId && column.id !== columnId) continue
 
         for (const task of column.tasks) {
@@ -831,8 +856,10 @@ export function registerTools(server: McpServer) {
           if (task.metadata?.archived) continue
 
           // Check age filter
-          if (olderThanDays !== undefined && task.metadata?.completedAt) {
+          if (olderThanDays !== undefined) {
+            if (!task.metadata?.completedAt) continue
             const completedDate = new Date(task.metadata.completedAt)
+            if (isNaN(completedDate.getTime())) continue
             const daysSince = (now.getTime() - completedDate.getTime()) / (1000 * 60 * 60 * 24)
             if (daysSince < olderThanDays) continue
           }
