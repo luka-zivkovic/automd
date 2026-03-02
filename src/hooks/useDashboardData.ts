@@ -18,6 +18,7 @@ export interface DashboardTask {
 export interface BoardSummary {
   fileId: string
   fileName: string
+  itemType: string
   projectId: string | null
   projectName: string | null
   projectColor: string | null
@@ -30,12 +31,13 @@ export interface BoardSummary {
 }
 
 export interface DashboardData {
-  totalBoards: number
+  totalItems: number
   totalProjects: number
   totalTasks: number
   completedTasks: number
   completionPercent: number
   overdueCount: number
+  knowledgeCount: number
   boards: BoardSummary[]
   myTasks: DashboardTask[]
   overdueTasks: DashboardTask[]
@@ -124,6 +126,7 @@ export function useDashboardData(): DashboardData {
       return {
         fileId: file.id,
         fileName: file.name,
+        itemType: file.itemType ?? 'board',
         projectId: file.projectId,
         projectName: project?.name ?? null,
         projectColor: project?.color ?? null,
@@ -175,13 +178,19 @@ export function useDashboardData(): DashboardData {
       .sort((a, b) => b.count - a.count)
   }, [allDashboardTasks])
 
+  // Knowledge items count
+  const knowledgeCount = useMemo(() => {
+    return allDashboardTasks.filter((dt) => dt.task.metadata.knowledge).length
+  }, [allDashboardTasks])
+
   return {
-    totalBoards: files.length,
+    totalItems: files.length,
     totalProjects: projects.length,
     totalTasks,
     completedTasks,
     completionPercent,
     overdueCount: overdueTasks.length,
+    knowledgeCount,
     boards,
     myTasks,
     overdueTasks,

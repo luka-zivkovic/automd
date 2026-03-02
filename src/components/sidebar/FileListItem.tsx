@@ -2,9 +2,16 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useFilesStore } from '@/store/files-store'
+import { useUiStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
-import { GripVertical, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { GripVertical, MoreHorizontal, Pencil, Trash2, LayoutGrid, CheckSquare, FileText } from 'lucide-react'
 import type { BoardFile } from '@/lib/markdown/types'
+
+const ITEM_TYPE_ICON = {
+  board: LayoutGrid,
+  checklist: CheckSquare,
+  note: FileText,
+} as const
 import { formatRelativeDate } from '@/lib/format-relative-date'
 
 interface FileListItemProps {
@@ -66,8 +73,18 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
   const handleClick = useCallback(() => {
     if (!isRenaming) {
       setActiveFile(file.id)
+      const view = useUiStore.getState().activeView
+      if (file.itemType === 'note') {
+        // Notes always open in document view
+        if (view !== 'document') {
+          useUiStore.getState().setActiveView('document')
+        }
+      } else if (view === 'document' || view === 'dashboard' || view === 'memory' || view === 'prompts') {
+        // Non-note files: switch away from non-board views
+        useUiStore.getState().setActiveView('checklist')
+      }
     }
-  }, [file.id, isRenaming, setActiveFile])
+  }, [file.id, file.itemType, isRenaming, setActiveFile])
 
   const handleDoubleClick = useCallback(() => {
     setRenameValue(file.name)
@@ -152,7 +169,13 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
           />
         ) : (
           <>
-            <div className="text-sm font-medium truncate">{file.name}</div>
+            <div className="text-sm font-medium truncate flex items-center gap-1.5">
+              {file.itemType && file.itemType !== 'board' && (() => {
+                const Icon = ITEM_TYPE_ICON[file.itemType]
+                return <Icon className="size-3 shrink-0 text-muted-foreground" />
+              })()}
+              {file.name}
+            </div>
             {!isDragOverlay && (
               <div className="text-[11px] text-muted-foreground/70 truncate">
                 {formatRelativeDate(file.updatedAt)}

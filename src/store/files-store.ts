@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { nanoid } from 'nanoid'
-import type { BoardFile, Project } from '@/lib/markdown/types'
+import type { BoardFile, ItemType, Project } from '@/lib/markdown/types'
 import { DEFAULT_MARKDOWN } from '@/lib/markdown/default-document'
 
 interface FilesStore {
@@ -10,7 +10,7 @@ interface FilesStore {
   activeFileId: string | null
   projects: Project[]
 
-  createFile: (name: string, markdown?: string) => string
+  createFile: (name: string, markdown?: string, projectId?: string | null, itemType?: ItemType) => string
   deleteFile: (fileId: string) => void
   renameFile: (fileId: string, name: string) => void
   updateFileMarkdown: (fileId: string, markdown: string) => void
@@ -32,7 +32,7 @@ export const useFilesStore = create<FilesStore>()(
         activeFileId: null as string | null,
         projects: [] as Project[],
 
-        createFile: (name: string, markdown?: string): string => {
+        createFile: (name: string, markdown?: string, projectId?: string | null, itemType?: ItemType): string => {
           const id = nanoid()
           const now = Date.now()
           const file: BoardFile = {
@@ -41,7 +41,8 @@ export const useFilesStore = create<FilesStore>()(
             markdown: markdown ?? DEFAULT_MARKDOWN,
             createdAt: now,
             updatedAt: now,
-            projectId: null,
+            projectId: projectId ?? null,
+            itemType: itemType ?? 'board',
           }
           set((state) => {
             state.files.push(file)

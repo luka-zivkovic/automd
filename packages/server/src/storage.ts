@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { BoardFile, Project } from '@automd/shared'
+import type { BoardFile, ItemType, Project } from '@automd/shared'
 import { DEFAULT_MARKDOWN } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
 import { getAutomdDir } from './config.js'
@@ -25,6 +25,7 @@ interface Manifest {
     name: string
     filename: string
     projectId: string | null
+    itemType: ItemType
     createdAt: number
     updatedAt: number
   }>
@@ -49,6 +50,10 @@ function readManifest(): Manifest {
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed.files)) parsed.files = []
     if (!Array.isArray(parsed.projects)) parsed.projects = []
+    // Migrate legacy entries missing itemType
+    for (const f of parsed.files) {
+      if (!f.itemType) f.itemType = 'board'
+    }
     return parsed as Manifest
   } catch (err) {
     console.error('[storage] Failed to read manifest.json, resetting:', err)
@@ -128,6 +133,7 @@ export function listFiles(): BoardFile[] {
         createdAt: f.createdAt,
         updatedAt: f.updatedAt,
         projectId: f.projectId,
+        itemType: f.itemType,
       }
     })
   } catch (err) {
@@ -159,6 +165,7 @@ export function getFile(id: string): BoardFile | null {
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
       projectId: entry.projectId,
+      itemType: entry.itemType,
     }
   } catch (err) {
     if (err instanceof StorageError) throw err
@@ -171,6 +178,7 @@ export function createFile(
   name: string,
   markdown?: string,
   projectId?: string | null,
+  itemType?: ItemType,
 ): BoardFile {
   try {
     const manifest = readManifest()
@@ -178,6 +186,7 @@ export function createFile(
     const filename = uniqueFilename(name, existingFilenames)
     const now = Date.now()
     const content = markdown ?? DEFAULT_MARKDOWN
+    const resolvedItemType = itemType ?? 'board'
 
     const mdPath = safeBoardPath(filename)
     ensureDirs()
@@ -189,10 +198,20 @@ export function createFile(
       name,
       filename,
       projectId: projectId ?? null,
+      itemType: resolvedItemType,
       createdAt: now,
       updatedAt: now,
     }
     manifest.files.push(entry)
+
+    // Link file to project
+    if (projectId) {
+      const project = manifest.projects.find((p) => p.id === projectId)
+      if (project && !project.fileIds.includes(id)) {
+        project.fileIds.push(id)
+      }
+    }
+
     writeManifest(manifest)
 
     return {
@@ -202,6 +221,7 @@ export function createFile(
       createdAt: now,
       updatedAt: now,
       projectId: projectId ?? null,
+      itemType: resolvedItemType,
     }
   } catch (err) {
     if (err instanceof StorageError) throw err
@@ -229,6 +249,7 @@ export function updateFileMarkdown(id: string, markdown: string): BoardFile | nu
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
       projectId: entry.projectId,
+      itemType: entry.itemType,
     }
   } catch (err) {
     if (err instanceof StorageError) throw err

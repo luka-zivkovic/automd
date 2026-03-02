@@ -565,4 +565,297 @@ export function registerTools(server: McpServer) {
       return errorResponse(err)
     }
   })
+
+  // ─── Knowledge Tools ──────────────────────────────────────────────
+
+  server.registerTool('add_knowledge', {
+    title: 'Add Knowledge',
+    description: 'Add a knowledge item to a board. Knowledge items are tasks with knowledge:true — they store decisions, patterns, references, and institutional memory. They reuse the task infrastructure but skip the checkbox/completion workflow.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      columnId: z.string().describe('The column ID'),
+      content: z.string().describe('Knowledge item title (e.g. "Always use parameterized queries for SQL")'),
+      description: z.string().optional().describe('Detailed description/context for this knowledge item'),
+      learnings: z.string().optional().describe('Key learnings as bullet points (newline-separated). Supports #tags.'),
+      labels: z.array(z.string()).optional().describe('Labels for categorization (e.g. ["security", "database"])'),
+      agentName: z.string().regex(/^[\w-]+$/).optional().describe('Agent name to tag with built-by:'),
+    },
+  }, async ({ boardId, columnId, content, description, learnings, labels, agentName }) => {
+    try {
+      // 1. Build content with knowledge:true flag
+      let taskContent = `${content} knowledge:true`
+      if (labels?.length) taskContent += ' ' + labels.map(l => `#${l}`).join(' ')
+      if (agentName) taskContent += ` built-by:${agentName}`
+
+      const result = await api.addTask(boardId, columnId, taskContent)
+
+      // 2. Add description if provided
+      if (description && result?.taskId) {
+        await api.updateTask(boardId, result.taskId, {
+          action: 'updateDescription',
+          description,
+        })
+      }
+
+      // 3. Add learnings if provided
+      if (learnings && result?.taskId) {
+        await api.updateTask(boardId, result.taskId, {
+          action: 'updateLearnings',
+          learnings,
+        })
+      }
+
+      return json({ ...result, knowledge: true })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('update_knowledge', {
+    title: 'Update Knowledge',
+    description: 'Update an existing knowledge item\'s description, learnings, or labels.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      taskId: z.string().describe('The task/knowledge item ID'),
+      description: z.string().optional().describe('New description (replaces existing)'),
+      learnings: z.string().optional().describe('New learnings (replaces existing). Supports #tags.'),
+      labels: z.array(z.string()).optional().describe('New labels (replaces existing)'),
+    },
+  }, async ({ boardId, taskId, description, learnings, labels }) => {
+    try {
+      const results: string[] = []
+
+      if (description !== undefined) {
+        await api.updateTask(boardId, taskId, {
+          action: 'updateDescription',
+          description,
+        })
+        results.push('description updated')
+      }
+
+      if (learnings !== undefined) {
+        await api.updateTask(boardId, taskId, {
+          action: 'updateLearnings',
+          learnings,
+        })
+        results.push('learnings updated')
+      }
+
+      if (labels !== undefined) {
+        // Fetch current task to preserve displayContent
+        const board = await api.getFile(boardId)
+        const allTasks = board.columns.flatMap((c: { tasks: unknown[] }) => c.tasks)
+        const task = allTasks.find((t: { id: string }) => t.id === taskId)
+        if (task) {
+          await api.updateTask(boardId, taskId, {
+            action: 'updateMetadata',
+            displayContent: task.displayContent,
+            metadata: { ...task.metadata, labels },
+          })
+          results.push('labels updated')
+        }
+      }
+
+      return json({ ok: true, updated: results })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('find_knowledge', {
+    title: 'Find Knowledge',
+    description: 'Search for knowledge items across all boards. Returns tasks with knowledge:true OR tasks that have learnings. Use this to find institutional memory, past decisions, and patterns.',
+    inputSchema: {
+      query: z.string().optional().describe('Text to search for in knowledge items'),
+      label: z.string().optional().describe('Filter by label (without #)'),
+    },
+  }, async ({ query, label }) => {
+    try {
+      const boards = await api.listFiles()
+      const results: Array<{
+        boardId: string
+        boardName: string
+        taskId: string
+        title: string
+        labels: string[]
+        description: string | null
+        learnings: string | null
+        column: string
+      }> = []
+
+      const q = query?.toLowerCase()
+
+      for (const boardSummary of boards) {
+        try {
+          const board = await api.getFile(boardSummary.id)
+          for (const column of board.columns) {
+            for (const task of column.tasks) {
+              // Must be knowledge:true OR have learnings
+              const isKnowledge = task.metadata?.knowledge === true
+              const hasLearnings = !!task.learnings
+              if (!isKnowledge && !hasLearnings) continue
+
+              // Apply text filter
+              if (q) {
+                const searchable = [
+                  task.content, task.description,
+                  task.acceptanceCriteria, task.learnings,
+                ].filter(Boolean).join(' ').toLowerCase()
+                if (!searchable.includes(q)) continue
+              }
+
+              // Apply label filter
+              if (label) {
+                const hasLabel = task.metadata?.labels?.includes(label)
+                const hasInlineTag = task.learnings?.toLowerCase().includes(`#${label.toLowerCase()}`)
+                if (!hasLabel && !hasInlineTag) continue
+              }
+
+              results.push({
+                boardId: boardSummary.id,
+                boardName: boardSummary.name,
+                taskId: task.id,
+                title: task.displayContent,
+                labels: task.metadata?.labels ?? [],
+                description: task.description,
+                learnings: task.learnings,
+                column: column.title,
+              })
+            }
+          }
+        } catch (err) {
+          console.error(`[mcp] Failed to search board ${boardSummary.id}:`, err)
+        }
+      }
+
+      return json({ count: results.length, results })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('synthesize_topic', {
+    title: 'Synthesize Topic',
+    description: 'Gather all knowledge about a topic and return a structured summary. This collects and organizes existing knowledge items — it does NOT generate AI content. Returns a paste-ready context brief.',
+    inputSchema: {
+      topic: z.string().describe('Topic to synthesize knowledge about (e.g. "authentication", "pricing", "deployment")'),
+      labels: z.string().optional().describe('Comma-separated labels to filter by (e.g. "backend,security")'),
+    },
+  }, async ({ topic, labels }) => {
+    try {
+      const result = await api.getContext({ topic, labels, limit: 50 })
+      return text(result.context)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('import_memories', {
+    title: 'Import Memories',
+    description: 'Bulk import knowledge items from external sources (AI conversation logs, meeting notes, etc.). Creates knowledge:true tasks for each item.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID to import into'),
+      columnId: z.string().describe('The column ID to add items to'),
+      items: z.array(z.object({
+        content: z.string().describe('Knowledge item title'),
+        description: z.string().optional().describe('Detailed description'),
+        learnings: z.string().optional().describe('Key learnings'),
+        labels: z.array(z.string()).optional().describe('Labels for categorization'),
+      })).describe('Array of knowledge items to import'),
+      agentName: z.string().regex(/^[\w-]+$/).optional().describe('Agent name to tag imports with'),
+    },
+  }, async ({ boardId, columnId, items, agentName }) => {
+    try {
+      const results: Array<{ content: string; taskId: string }> = []
+      const errors: string[] = []
+
+      for (const item of items) {
+        try {
+          let taskContent = `${item.content} knowledge:true`
+          if (item.labels?.length) taskContent += ' ' + item.labels.map(l => `#${l}`).join(' ')
+          if (agentName) taskContent += ` built-by:${agentName}`
+
+          const result = await api.addTask(boardId, columnId, taskContent)
+
+          if (item.description && result?.taskId) {
+            await api.updateTask(boardId, result.taskId, {
+              action: 'updateDescription',
+              description: item.description,
+            })
+          }
+
+          if (item.learnings && result?.taskId) {
+            await api.updateTask(boardId, result.taskId, {
+              action: 'updateLearnings',
+              learnings: item.learnings,
+            })
+          }
+
+          results.push({ content: item.content, taskId: result.taskId })
+        } catch (err) {
+          errors.push(`Failed to import "${item.content}": ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+
+      return json({
+        imported: results.length,
+        failed: errors.length,
+        results,
+        errors: errors.length > 0 ? errors : undefined,
+      })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('archive_completed_tasks', {
+    title: 'Archive Completed Tasks',
+    description: 'Bulk archive completed tasks. Optionally filter by age (days since completion) or column.',
+    inputSchema: {
+      boardId: z.string().describe('The board ID'),
+      olderThanDays: z.number().optional().describe('Only archive tasks completed more than N days ago'),
+      columnId: z.string().optional().describe('Only archive tasks in this column'),
+    },
+  }, async ({ boardId, olderThanDays, columnId }) => {
+    try {
+      const board = await api.getFile(boardId)
+      const now = new Date()
+      let archived = 0
+      const errors: string[] = []
+
+      for (const column of board.columns) {
+        if (columnId && column.id !== columnId) continue
+
+        for (const task of column.tasks) {
+          if (!task.checked) continue
+          if (task.metadata?.archived) continue
+
+          // Check age filter
+          if (olderThanDays !== undefined && task.metadata?.completedAt) {
+            const completedDate = new Date(task.metadata.completedAt)
+            const daysSince = (now.getTime() - completedDate.getTime()) / (1000 * 60 * 60 * 24)
+            if (daysSince < olderThanDays) continue
+          }
+
+          try {
+            await api.updateTask(boardId, task.id, {
+              action: 'updateMetadata',
+              displayContent: task.displayContent,
+              metadata: { ...task.metadata, archived: true },
+            })
+            archived++
+          } catch (err) {
+            errors.push(`Failed to archive "${task.displayContent}": ${err instanceof Error ? err.message : String(err)}`)
+          }
+        }
+      }
+
+      return json({
+        archived,
+        errors: errors.length > 0 ? errors : undefined,
+      })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
 }

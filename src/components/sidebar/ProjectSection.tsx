@@ -6,8 +6,9 @@ import {
 } from '@dnd-kit/sortable'
 import { useFilesStore } from '@/store/files-store'
 import { FileListItem } from './FileListItem'
+import { CreateItemMenu } from './CreateItemMenu'
 import { Button } from '@/components/ui/button'
-import { ChevronRight, Plus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 
@@ -25,9 +26,6 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
   const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const createFile = useFilesStore((s) => s.createFile)
-  const setActiveFile = useFilesStore((s) => s.setActiveFile)
-  const moveFileToProject = useFilesStore((s) => s.moveFileToProject)
   const renameProject = useFilesStore((s) => s.renameProject)
   const deleteProject = useFilesStore((s) => s.deleteProject)
 
@@ -64,17 +62,6 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
       setCollapsed((v) => !v)
     }
   }, [isRenaming])
-
-  const handleCreateFileInProject = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      const fileId = createFile('Untitled Board')
-      moveFileToProject(fileId, project.id)
-      setActiveFile(fileId)
-      setCollapsed(false)
-    },
-    [createFile, moveFileToProject, setActiveFile, project.id]
-  )
 
   const commitRename = useCallback(() => {
     const trimmed = renameValue.trim()
@@ -159,15 +146,8 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
 
         {/* Action buttons */}
         {!isRenaming && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-5 text-muted-foreground hover:text-foreground"
-              onClick={handleCreateFileInProject}
-            >
-              <Plus className="size-3" />
-            </Button>
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <CreateItemMenu projectId={project.id} onFileCreated={() => setCollapsed(false)} />
             <Button
               variant="ghost"
               size="icon-xs"

@@ -1,10 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import {
   LayoutGrid,
   Zap,
   FolderKanban,
   User,
   File,
+  Brain,
+  Bug,
+  TrendingUp,
+  Calendar,
+  MessageCircle,
+  Target,
+  CheckSquare,
+  FileText,
   type LucideIcon,
 } from 'lucide-react'
 import type { BoardTemplate } from '@/lib/templates'
@@ -16,15 +24,35 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'folder-kanban': FolderKanban,
   user: User,
   file: File,
+  brain: Brain,
+  bug: Bug,
+  'trending-up': TrendingUp,
+  calendar: Calendar,
+  'message-circle': MessageCircle,
+  target: Target,
+  'check-square': CheckSquare,
+  'file-text': FileText,
 }
 
 interface TemplatePickerProps {
   onSelect: (template: BoardTemplate) => void
   onClose: () => void
+  filterItemType?: 'board' | 'checklist' | 'note'
 }
 
-export function TemplatePicker({ onSelect, onClose }: TemplatePickerProps) {
+export function TemplatePicker({ onSelect, onClose, filterItemType }: TemplatePickerProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+
+  const templates = useMemo(() => {
+    if (filterItemType) {
+      return BOARD_TEMPLATES.filter((t) => t.itemType === filterItemType)
+    }
+    return BOARD_TEMPLATES
+  }, [filterItemType])
+
+  const boardTemplates = useMemo(() => templates.filter((t) => t.itemType === 'board'), [templates])
+  const checklistTemplates = useMemo(() => templates.filter((t) => t.itemType === 'checklist'), [templates])
+  const noteTemplates = useMemo(() => templates.filter((t) => t.itemType === 'note'), [templates])
 
   // Close on Escape
   useEffect(() => {
@@ -54,17 +82,16 @@ export function TemplatePicker({ onSelect, onClose }: TemplatePickerProps) {
     }
   }, [onClose])
 
-  return (
-    <div
-      ref={panelRef}
-      className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-border bg-popover shadow-lg overflow-hidden"
-    >
-      <div className="px-3 py-2 border-b border-border">
-        <p className="text-xs font-semibold text-foreground">New Board</p>
-        <p className="text-[11px] text-muted-foreground">Choose a template</p>
-      </div>
-      <div className="p-1">
-        {BOARD_TEMPLATES.map((template) => {
+  const renderGroup = (label: string, items: BoardTemplate[]) => {
+    if (items.length === 0) return null
+    return (
+      <div key={label}>
+        {!filterItemType && (
+          <div className="px-3 py-1.5">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+          </div>
+        )}
+        {items.map((template) => {
           const Icon = ICON_MAP[template.icon] ?? File
           return (
             <button
@@ -86,6 +113,22 @@ export function TemplatePicker({ onSelect, onClose }: TemplatePickerProps) {
             </button>
           )
         })}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={panelRef}
+      className="absolute right-0 top-full mt-1 z-50 w-72 max-h-[420px] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg"
+    >
+      <div className="px-3 py-2 border-b border-border sticky top-0 bg-popover z-10">
+        <p className="text-xs font-semibold text-foreground">Choose a template</p>
+      </div>
+      <div className="p-1">
+        {renderGroup('Boards', boardTemplates)}
+        {renderGroup('Checklists', checklistTemplates)}
+        {renderGroup('Notes', noteTemplates)}
       </div>
     </div>
   )

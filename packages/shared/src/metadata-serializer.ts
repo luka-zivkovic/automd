@@ -34,6 +34,14 @@ export function serializeMetadata(
     tokens.push(`built-by:${metadata.builtBy}`)
   }
 
+  if (metadata.completedAt) {
+    tokens.push(`completed-at:${metadata.completedAt}`)
+  }
+
+  if (metadata.knowledge) {
+    tokens.push('knowledge:true')
+  }
+
   if (metadata.archived) {
     tokens.push('archived:true')
   }

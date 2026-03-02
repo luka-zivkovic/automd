@@ -14,12 +14,25 @@ export function extractFrontmatter(ast: Root): BoardMeta | null {
     const data = parseYaml((yamlNode as { value: string }).value)
     if (!data || typeof data !== 'object') return null
 
+    // Parse vocabulary: validate it's Record<string, string[]>
+    let vocabulary: Record<string, string[]> | undefined
+    if (data.vocabulary && typeof data.vocabulary === 'object' && !Array.isArray(data.vocabulary)) {
+      vocabulary = {}
+      for (const [key, val] of Object.entries(data.vocabulary)) {
+        if (Array.isArray(val) && val.every((v: unknown) => typeof v === 'string')) {
+          vocabulary[key] = val
+        }
+      }
+      if (Object.keys(vocabulary).length === 0) vocabulary = undefined
+    }
+
     return {
       board: data.board ?? undefined,
       project: data.project ?? undefined,
       projectId: data.projectId ?? undefined,
       description: data.description ?? undefined,
       tags: Array.isArray(data.tags) ? data.tags : undefined,
+      vocabulary,
     }
   } catch {
     return null

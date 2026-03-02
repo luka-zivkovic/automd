@@ -23,10 +23,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { FileListItem } from './FileListItem'
-import { CreateFileButton } from './CreateFileButton'
+import { CreateItemMenu } from './CreateItemMenu'
 import { ProjectSection } from './ProjectSection'
 import { CreateProjectDialog } from './CreateProjectDialog'
-import { FolderPlus } from 'lucide-react'
+import { FolderPlus, Brain, LayoutDashboard } from 'lucide-react'
 import type { BoardFile } from '@/lib/markdown/types'
 
 /**
@@ -78,6 +78,8 @@ function UngroupedDropZone({
 
 export function Sidebar() {
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
+  const activeView = useUiStore((s) => s.activeView)
+  const setActiveView = useUiStore((s) => s.setActiveView)
   const files = useFilesStore((s) => s.files)
   const projects = useFilesStore((s) => s.projects)
   const activeFileId = useFilesStore((s) => s.activeFileId)
@@ -231,9 +233,35 @@ export function Sidebar() {
       style={{ width: sidebarOpen ? 240 : 0 }}
     >
       <div className="w-[240px] h-full flex flex-col">
+        {/* Nav links */}
+        <div className="px-2 pt-2 pb-1 flex flex-col gap-0.5">
+          <button
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              activeView === 'dashboard'
+                ? 'bg-primary/10 text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            }`}
+            onClick={() => setActiveView('dashboard')}
+          >
+            <LayoutDashboard className="size-3.5" />
+            Dashboard
+          </button>
+          <button
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              activeView === 'memory'
+                ? 'bg-primary/10 text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            }`}
+            onClick={() => setActiveView('memory')}
+          >
+            <Brain className="size-3.5" />
+            Memory
+          </button>
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Boards</h2>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-t border-border">
+          <h2 className="text-sm font-semibold text-foreground">Items</h2>
           <div className="flex items-center gap-0.5">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -248,7 +276,7 @@ export function Sidebar() {
               </TooltipTrigger>
               <TooltipContent side="bottom">New Project</TooltipContent>
             </Tooltip>
-            <CreateFileButton />
+            <CreateItemMenu />
           </div>
         </div>
 
@@ -292,7 +320,7 @@ export function Sidebar() {
               {/* Empty state */}
               {files.length === 0 && projects.length === 0 && (
                 <p className="text-xs text-muted-foreground px-2 py-4 text-center">
-                  No boards yet. Create one to get started.
+                  No items yet. Create one to get started.
                 </p>
               )}
             </div>

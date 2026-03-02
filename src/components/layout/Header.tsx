@@ -1,4 +1,3 @@
-import { ViewSwitcher } from './ViewSwitcher'
 import { ConnectionStatus } from './ConnectionStatus'
 import { useDocumentStore } from '@/store/document-store'
 import { useFilesStore } from '@/store/files-store'
@@ -7,12 +6,13 @@ import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut } from 'lucide-react'
+import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut, CheckSquare, Columns3 } from 'lucide-react'
 import { useActivityStore } from '@/store/activity-store'
 import { useAuthStore } from '@/store/auth-store'
 import { UserBadge } from '@/components/settings/UserBadge'
 import { ThemeToggle } from '@/components/settings/ThemeToggle'
 import { ApiKeyManager } from '@/components/settings/ApiKeyManager'
+import { PromptsPopover } from '@/components/prompts/PromptsPopover'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
 import { apiFetch, HAS_SERVER } from '@/lib/api'
 
@@ -27,6 +27,8 @@ export function Header() {
 
   const sidebarOpen = useUiStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUiStore((s) => s.setSidebarOpen)
+  const activeView = useUiStore((s) => s.activeView)
+  const setActiveView = useUiStore((s) => s.setActiveView)
 
   const files = useFilesStore((s) => s.files)
   const projects = useFilesStore((s) => s.projects)
@@ -50,6 +52,10 @@ export function Header() {
   const completedCount = tasks.filter((t) => t.checked === true).length
   const totalCount = tasks.length
   const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+
+  // Show board view toggle only when a non-note file is selected and we're in a file view
+  const isNote = activeFile?.itemType === 'note'
+  const showViewToggle = activeFile && !isNote && activeView !== 'memory' && activeView !== 'prompts' && activeView !== 'dashboard' && activeView !== 'document'
 
   return (
     <header className="shrink-0 relative z-10">
@@ -75,12 +81,15 @@ export function Header() {
             <TooltipContent>{sidebarOpen ? 'Close sidebar' : 'Open sidebar'}</TooltipContent>
           </Tooltip>
 
-          <div className="flex items-center gap-2.5">
+          <button
+            className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+            onClick={() => setActiveView('dashboard')}
+          >
             <img src="/logo.png" alt="automd" className="size-7 rounded-lg" />
             <h1 className="font-display text-[22px] tracking-tight text-foreground italic">
               automd
             </h1>
-          </div>
+          </button>
 
           {/* Active file name with project breadcrumb */}
           {activeFile && (
@@ -103,7 +112,7 @@ export function Header() {
             </>
           )}
 
-          {totalCount > 0 && (
+          {totalCount > 0 && !isNote && (
             <div className="flex items-center gap-2.5">
               <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div
@@ -118,7 +127,41 @@ export function Header() {
           )}
         </div>
 
-        <ViewSwitcher />
+        {/* Center: view toggle + prompts */}
+        <div className="flex items-center gap-2">
+          {showViewToggle && (
+            <div className="flex items-center bg-secondary/60 rounded-lg p-0.5 gap-0.5">
+              <button
+                onClick={() => setActiveView('checklist')}
+                className={`
+                  flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200
+                  ${activeView !== 'kanban'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                  }
+                `}
+              >
+                <CheckSquare className="size-4" />
+                <span className="hidden sm:inline">Checklist</span>
+              </button>
+              <button
+                onClick={() => setActiveView('kanban')}
+                className={`
+                  flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200
+                  ${activeView === 'kanban'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                  }
+                `}
+              >
+                <Columns3 className="size-4" />
+                <span className="hidden sm:inline">Kanban</span>
+              </button>
+            </div>
+          )}
+
+          <PromptsPopover />
+        </div>
 
         <div className="flex items-center gap-1">
           <ConnectionStatus />

@@ -5,5 +5,7 @@ export type {
   DocumentState,
   IdCache,
   BoardFile,
+  ItemType,
+  BoardVocabulary,
   Project,
 } from '@automd/shared'

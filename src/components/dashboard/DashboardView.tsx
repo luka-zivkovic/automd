@@ -11,10 +11,13 @@ import { formatRelativeDate } from '@/lib/format-relative-date'
 import type { ActivityEvent } from '@/store/activity-store'
 import {
   LayoutDashboard,
+  LayoutGrid,
   AlertCircle,
   FileText,
+  CheckSquare,
   CheckCircle2,
   Clock,
+  Brain,
   Layers,
   Plus,
   Edit3,
@@ -78,9 +81,16 @@ function StatCard({ label, value, icon: Icon, variant = 'default' }: {
 
 // ── Board Card ────────────────────────────────────────────────────────
 
+const ITEM_TYPE_ICON: Record<string, LucideIcon> = {
+  board: LayoutGrid,
+  checklist: CheckSquare,
+  note: FileText,
+}
+
 function BoardCard({ board }: { board: BoardSummary }) {
   const setActiveFile = useFilesStore((s) => s.setActiveFile)
   const setActiveView = useUiStore((s) => s.setActiveView)
+  const ItemIcon = ITEM_TYPE_ICON[board.itemType] ?? LayoutGrid
 
   function handleClick() {
     setActiveFile(board.fileId)
@@ -102,7 +112,7 @@ function BoardCard({ board }: { board: BoardSummary }) {
             </div>
           )}
           <div className="flex items-center gap-2">
-            <FileText className="size-3.5 text-muted-foreground/40 shrink-0" />
+            <ItemIcon className="size-3.5 text-muted-foreground/40 shrink-0" />
             <p className="text-sm font-medium text-foreground truncate">{board.fileName}</p>
           </div>
         </div>
@@ -229,7 +239,7 @@ function SectionHeader({ title, count, variant = 'default' }: {
 export function DashboardView() {
   const data = useDashboardData()
 
-  if (data.totalBoards === 0) {
+  if (data.totalItems === 0) {
     return (
       <div className="h-full flex flex-col">
         <div className="flex-1 flex items-center justify-center">
@@ -261,7 +271,7 @@ export function DashboardView() {
               <div>
                 <h2 className="font-display text-3xl text-foreground italic">Dashboard</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {data.completedTasks} of {data.totalTasks} tasks complete across {data.totalBoards} board{data.totalBoards !== 1 ? 's' : ''}
+                  {data.completedTasks} of {data.totalTasks} tasks complete across {data.totalItems} item{data.totalItems !== 1 ? 's' : ''}
                 </p>
               </div>
               <span className="text-3xl font-light tabular-nums text-gradient">
@@ -273,20 +283,25 @@ export function DashboardView() {
 
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8 stagger-enter">
-            <StatCard label="Boards" value={data.totalBoards} icon={Layers} />
-            <StatCard label="Tasks" value={data.totalTasks} icon={FileText} />
-            <StatCard label="Done" value={data.completedTasks} icon={CheckCircle2} />
-            <StatCard
-              label="Overdue"
-              value={data.overdueCount}
-              icon={Clock}
-              variant={data.overdueCount > 0 ? 'danger' : 'default'}
-            />
+            <StatCard label="Items" value={data.totalItems} icon={Layers} />
+            <StatCard label="Tasks" value={data.totalTasks} icon={CheckCircle2} />
+            <StatCard label="Done" value={data.completedTasks} icon={Clock} />
+            <StatCard label="Knowledge" value={data.knowledgeCount} icon={Brain} />
           </div>
 
-          {/* Boards */}
+          {/* Overdue alert */}
+          {data.overdueCount > 0 && (
+            <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/10">
+              <AlertCircle className="size-4 text-red-500 shrink-0" />
+              <span className="text-sm text-red-600 dark:text-red-400">
+                {data.overdueCount} overdue task{data.overdueCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+
+          {/* Items */}
           <div className="mb-8">
-            <SectionHeader title="Boards" count={data.totalBoards} />
+            <SectionHeader title="Items" count={data.totalItems} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 stagger-enter">
               {data.boards.map((board) => (
                 <BoardCard key={board.fileId} board={board} />

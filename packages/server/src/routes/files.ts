@@ -20,6 +20,7 @@ filesRouter.get('/', (_req, res, next) => {
         id: f.id,
         name: f.name,
         projectId: f.projectId,
+        itemType: f.itemType,
         taskCount,
         createdAt: f.createdAt,
         updatedAt: f.updatedAt,
@@ -52,6 +53,7 @@ filesRouter.get('/:id', (req, res, next) => {
       id: file.id,
       name: file.name,
       projectId: file.projectId,
+      itemType: file.itemType,
       markdown: file.markdown,
       meta,
       columns,
@@ -67,16 +69,20 @@ filesRouter.get('/:id', (req, res, next) => {
 
 // Create a new board
 filesRouter.post('/', async (req, res, next) => {
-  const { name, markdown, projectId } = req.body
+  const { name, markdown, projectId, itemType, id: clientId } = req.body
   if (!name || !isValidName(name)) {
     res.status(400).json({ error: 'name is required (max 200 characters)' })
+    return
+  }
+  if (clientId !== undefined && !isValidId(clientId)) {
+    res.status(400).json({ error: 'Invalid id format' })
     return
   }
 
   try {
     const file = await withWriteLock(() => {
-      const id = nanoid(10)
-      return storage.createFile(id, name, markdown, projectId)
+      const id = clientId || nanoid(10)
+      return storage.createFile(id, name, markdown, projectId, itemType)
     })
 
     const actor = req.body.actor || undefined
