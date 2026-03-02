@@ -40,6 +40,7 @@ export function migrateToMultiFile(): void {
     createdAt: now,
     updatedAt: now,
     projectId: null,
+    itemType: 'board',
   }
 
   // Write in Zustand persist format

@@ -7,9 +7,11 @@ import {
   addTask,
   updateTaskContent,
   updateTaskMetadata,
+  updateTaskDescription,
   updateAcceptanceCriteria,
   updateLearnings,
   deleteTask,
+  extractTasksAndColumns,
 } from '@automd/shared'
 import type { TaskMetadata } from '@automd/shared'
 import * as storage from '../storage.js'
@@ -127,9 +129,29 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
       let newAst = ast
 
       switch (action) {
-        case 'toggle':
+        case 'toggle': {
           newAst = toggleTask(ast, taskId)
+          // Auto-stamp completed-at when toggling
+          const { tasks: parsedTasks } = extractTasksAndColumns(newAst)
+          const toggledTask = parsedTasks.find(t => t.id === taskId)
+          if (toggledTask) {
+            const today = new Date().toISOString().slice(0, 10)
+            if (toggledTask.checked) {
+              // Stamp completed-at date
+              newAst = updateTaskMetadata(
+                newAst, taskId, toggledTask.displayContent,
+                { ...toggledTask.metadata, completedAt: today }
+              )
+            } else if (toggledTask.metadata.completedAt) {
+              // Clear completed-at date
+              newAst = updateTaskMetadata(
+                newAst, taskId, toggledTask.displayContent,
+                { ...toggledTask.metadata, completedAt: null }
+              )
+            }
+          }
           break
+        }
         case 'move':
           if (!targetColumnId || targetIndex === undefined) {
             return { status: 400 as const, error: 'targetColumnId and targetIndex required for move' }
@@ -153,6 +175,9 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
           break
         case 'updateLearnings':
           newAst = updateLearnings(ast, taskId, learnings ?? null)
+          break
+        case 'updateDescription':
+          newAst = updateTaskDescription(ast, taskId, req.body.description ?? null)
           break
         default:
           return { status: 400 as const, error: `Unknown action: ${action}` }

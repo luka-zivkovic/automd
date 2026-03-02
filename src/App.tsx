@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useUiStore } from '@/store/ui-store'
+import { useFilesStore } from '@/store/files-store'
 import { useConnectionStore } from '@/store/connection-store'
 import { useAuthStore } from '@/store/auth-store'
 import { Header } from '@/components/layout/Header'
@@ -7,6 +8,9 @@ import { DashboardView } from '@/components/dashboard/DashboardView'
 import { EditorView } from '@/components/editor/EditorView'
 import { ChecklistView } from '@/components/checklist/ChecklistView'
 import { KanbanView } from '@/components/kanban/KanbanView'
+import { DocumentView } from '@/components/document/DocumentView'
+import { MemoryView } from '@/components/memory/MemoryView'
+import { PromptLibrary } from '@/components/prompts/PromptLibrary'
 import { FileDropZone } from '@/components/editor/FileDropZone'
 import { TaskDetailPanel } from '@/components/detail/TaskDetailPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -25,6 +29,7 @@ import { API_BASE, HAS_SERVER } from '@/lib/api'
 
 function App() {
   const activeView = useUiStore((s) => s.activeView)
+  const activeFileId = useFilesStore((s) => s.activeFileId)
   const isLoading = useConnectionStore((s) => s.isLoading)
   const authStatus = useAuthStore((s) => s.status)
   useKeyboardShortcuts()
@@ -132,10 +137,21 @@ function App() {
                 <LoadingSkeleton />
               ) : (
                 <>
-                  {activeView === 'dashboard' && <DashboardView />}
-                  {activeView === 'editor' && <EditorView />}
-                  {activeView === 'checklist' && <ChecklistView />}
-                  {activeView === 'kanban' && <KanbanView />}
+                  {activeView === 'memory' ? (
+                    <MemoryView />
+                  ) : activeView === 'prompts' ? (
+                    <PromptLibrary />
+                  ) : activeView === 'dashboard' || !activeFileId ? (
+                    <DashboardView />
+                  ) : activeView === 'document' ? (
+                    <DocumentView />
+                  ) : activeView === 'kanban' ? (
+                    <KanbanView />
+                  ) : activeView === 'editor' ? (
+                    <EditorView />
+                  ) : (
+                    <ChecklistView />
+                  )}
                 </>
               )}
             </main>

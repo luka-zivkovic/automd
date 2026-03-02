@@ -28,6 +28,8 @@ export function useServerSync() {
   const hasLoadedOnceRef = useRef(false)
   const confirmedMarkdownRef = useRef<Map<string, string>>(new Map())
   const saveDebouncerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const knownFileIdsRef = useRef<Set<string>>(new Set())
+  const knownFileNamesRef = useRef<Map<string, string>>(new Map())
 
   useEffect(() => {
     if (!HAS_SERVER) return // Local-only mode
@@ -47,7 +49,7 @@ export function useServerSync() {
       useConnectionStore.getState().setError(null)
 
       const [filesResult, projectsResult] = await Promise.all([
-        apiFetch<Array<{ id: string; name: string; projectId: string | null; createdAt: number; updatedAt: number }>>('/files'),
+        apiFetch<Array<{ id: string; name: string; projectId: string | null; itemType?: BoardFile['itemType']; createdAt: number; updatedAt: number }>>('/files'),
         apiFetch<Project[]>('/projects'),
       ])
 
@@ -81,6 +83,7 @@ export function useServerSync() {
                 createdAt: summary.createdAt,
                 updatedAt: summary.updatedAt,
                 projectId: summary.projectId,
+                itemType: (summary.itemType as BoardFile['itemType']) ?? 'board',
               }
               // Track confirmed markdown
               confirmedMarkdownRef.current.set(file.id, file.markdown)
@@ -90,6 +93,10 @@ export function useServerSync() {
         ).filter((f): f is BoardFile => f !== null)
 
         if (!mountedRef.current) return
+
+        // Populate known file tracking refs
+        knownFileIdsRef.current = new Set(fullFiles.map(f => f.id))
+        knownFileNamesRef.current = new Map(fullFiles.map(f => [f.id, f.name]))
 
         isServerUpdateRef.current = true
         useFilesStore.setState({
@@ -173,9 +180,16 @@ export function useServerSync() {
               break
             }
             case 'file:created': {
+              // Skip echo for files we created locally
+              const existingFile = useFilesStore.getState().files.find(f => f.id === msg.payload.id)
+              if (existingFile) {
+                break
+              }
               apiFetch<BoardFile>(`/files/${msg.payload.id}`).then((result) => {
                 if (!mountedRef.current || !result.ok) return
                 const file = result.data
+                knownFileIdsRef.current.add(file.id)
+                knownFileNamesRef.current.set(file.id, file.name)
                 useFilesStore.setState((state) => ({
                   files: [...state.files, {
                     id: file.id,
@@ -184,13 +198,14 @@ export function useServerSync() {
                     createdAt: file.createdAt,
                     updatedAt: file.updatedAt,
                     projectId: file.projectId,
+                    itemType: file.itemType ?? 'board',
                   }],
                 }))
                 confirmedMarkdownRef.current.set(file.id, file.markdown)
                 // Activity event
                 useActivityStore.getState().addEvent({
                   type: 'file:created',
-                  description: `Created board "${file.name}"`,
+                  description: `Created "${file.name}"`,
                   actor: msg.payload.actor || 'Someone',
                   timestamp: Date.now(),
                   fileId: file.id,
@@ -202,8 +217,17 @@ export function useServerSync() {
             case 'file:deleted': {
               const { id } = msg.payload
               const file = useFilesStore.getState().files.find(f => f.id === id)
+              if (!file) {
+                // Already deleted locally
+                confirmedMarkdownRef.current.delete(id)
+                knownFileIdsRef.current.delete(id)
+                knownFileNamesRef.current.delete(id)
+                break
+              }
               useFilesStore.getState().deleteFile(id)
               confirmedMarkdownRef.current.delete(id)
+              knownFileIdsRef.current.delete(id)
+              knownFileNamesRef.current.delete(id)
               // Activity event
               useActivityStore.getState().addEvent({
                 type: 'file:deleted',
@@ -371,8 +395,69 @@ export function useServerSync() {
       }
     )
 
+    // --- 5. Sync file creation, deletion, rename to server ---
+    const unsubFiles = useFilesStore.subscribe(
+      (state) => state.files,
+      (files) => {
+        if (isServerUpdateRef.current) return
+        if (!HAS_SERVER) return
+        const actor = useUserStore.getState().username || 'Anonymous'
+
+        const currentIds = new Set(files.map(f => f.id))
+
+        // Detect new files (created locally)
+        for (const file of files) {
+          if (!knownFileIdsRef.current.has(file.id)) {
+            // New file — POST to server
+            knownFileIdsRef.current.add(file.id)
+            knownFileNamesRef.current.set(file.id, file.name)
+            confirmedMarkdownRef.current.set(file.id, file.markdown)
+            apiFetch('/files', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: file.id,
+                name: file.name,
+                markdown: file.markdown,
+                projectId: file.projectId,
+                itemType: file.itemType,
+                actor,
+              }),
+            }).then((result) => {
+              if (!result.ok) {
+                toast.error(`Failed to sync "${file.name}" to server`, {
+                  id: `sync-create-${file.id}`,
+                  description: result.error,
+                })
+              }
+            })
+          }
+
+          // Detect rename
+          const knownName = knownFileNamesRef.current.get(file.id)
+          if (knownName !== undefined && knownName !== file.name) {
+            knownFileNamesRef.current.set(file.id, file.name)
+            apiFetch(`/files/${file.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ name: file.name, actor }),
+            })
+          }
+        }
+
+        // Detect deleted files
+        for (const id of knownFileIdsRef.current) {
+          if (!currentIds.has(id)) {
+            knownFileIdsRef.current.delete(id)
+            knownFileNamesRef.current.delete(id)
+            confirmedMarkdownRef.current.delete(id)
+            apiFetch(`/files/${id}`, { method: 'DELETE' })
+          }
+        }
+      }
+    )
+
     return () => {
       mountedRef.current = false
+      unsubFiles()
       unsubMarkdown()
       unsubUsername()
       clearTimeout(skeletonSafetyTimeout)

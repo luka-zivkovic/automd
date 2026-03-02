@@ -107,10 +107,10 @@ export const api = {
   // Files
   listFiles: () => request('/api/files'),
   getFile: (id: string) => request(`/api/files/${id}`),
-  createFile: (name: string, markdown?: string, projectId?: string) =>
+  createFile: (name: string, markdown?: string, projectId?: string, itemType?: string) =>
     request('/api/files', {
       method: 'POST',
-      body: JSON.stringify({ name, markdown, projectId }),
+      body: JSON.stringify({ name, markdown, projectId, itemType }),
     }),
   updateFile: (id: string, data: { markdown?: string; name?: string }) =>
     request(`/api/files/${id}`, {
@@ -134,6 +134,15 @@ export const api = {
     }),
   deleteTask: (fileId: string, taskId: string) =>
     request(`/api/files/${fileId}/tasks/${taskId}`, { method: 'DELETE' }),
+
+  // Context
+  getContext: (params: { topic?: string; labels?: string; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params.topic) query.set('topic', params.topic)
+    if (params.labels) query.set('labels', params.labels)
+    if (params.limit) query.set('limit', String(params.limit))
+    return request(`/api/context?${query.toString()}`)
+  },
 
   // Columns
   renameColumn: (fileId: string, columnId: string, title: string) =>

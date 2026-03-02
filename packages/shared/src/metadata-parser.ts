@@ -8,10 +8,12 @@ const PRIORITY_RE = /priority:(high|medium|low)/i
 const CREATED_BY_RE = /created-by:([\w-]+)/i
 const BUILT_BY_RE = /built-by:([\w-]+)/i
 const ARCHIVED_RE = /archived:true/i
+const COMPLETED_AT_RE = /completed-at:(\d{4}-\d{2}-\d{2})/i
+const KNOWLEDGE_RE = /knowledge:true/i
 
 // All token patterns for stripping — order matters (longer patterns first)
 const ALL_TOKENS_RE =
-  /\s*(?:archived:true|created-by:[\w-]+|built-by:[\w-]+|priority:(?:high|medium|low)|est:[\d.]+h?|due:\d{4}-\d{2}-\d{2}|@\w[\w-]*|#\w[\w-]*)\s*/gi
+  /\s*(?:knowledge:true|completed-at:\d{4}-\d{2}-\d{2}|archived:true|created-by:[\w-]+|built-by:[\w-]+|priority:(?:high|medium|low)|est:[\d.]+h?|due:\d{4}-\d{2}-\d{2}|@\w[\w-]*|#\w[\w-]*)\s*/gi
 
 export function emptyMetadata(): TaskMetadata {
   return {
@@ -23,6 +25,8 @@ export function emptyMetadata(): TaskMetadata {
     createdBy: null,
     builtBy: null,
     archived: false,
+    completedAt: null,
+    knowledge: false,
   }
 }
 
@@ -63,6 +67,13 @@ export function parseMetadata(content: string): {
 
   // Extract archived flag
   if (ARCHIVED_RE.test(content)) metadata.archived = true
+
+  // Extract completed-at date
+  const completedMatch = content.match(COMPLETED_AT_RE)
+  if (completedMatch) metadata.completedAt = completedMatch[1]
+
+  // Extract knowledge flag
+  if (KNOWLEDGE_RE.test(content)) metadata.knowledge = true
 
   // Strip all tokens to get display content
   const displayContent = content

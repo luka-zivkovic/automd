@@ -9,6 +9,8 @@ export interface TaskMetadata {
   createdBy: string | null
   builtBy: string | null
   archived: boolean
+  completedAt: string | null
+  knowledge: boolean
 }
 
 export interface Task {
@@ -32,12 +34,17 @@ export interface Column {
   tasks: Task[]
 }
 
+/** Flexible, domain-agnostic label dimensions for a board.
+ * e.g. { technology: ["react","node"], pattern: ["singleton","observer"] } */
+export type BoardVocabulary = Record<string, string[]>
+
 export interface BoardMeta {
   board?: string
   project?: string
   projectId?: string
   description?: string
   tags?: string[]
+  vocabulary?: BoardVocabulary
 }
 
 export interface DocumentState {
@@ -54,6 +61,8 @@ export interface IdCache {
   ids: Map<string, string> // id -> fingerprint
 }
 
+export type ItemType = 'board' | 'checklist' | 'note'
+
 export interface BoardFile {
   id: string
   name: string
@@ -61,6 +70,7 @@ export interface BoardFile {
   createdAt: number
   updatedAt: number
   projectId: string | null
+  itemType: ItemType
 }
 
 export interface Project {

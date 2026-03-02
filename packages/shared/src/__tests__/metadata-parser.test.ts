@@ -14,6 +14,8 @@ describe('emptyMetadata', () => {
     expect(meta.createdBy).toBeNull()
     expect(meta.builtBy).toBeNull()
     expect(meta.archived).toBe(false)
+    expect(meta.completedAt).toBeNull()
+    expect(meta.knowledge).toBe(false)
   })
 })
 
@@ -96,6 +98,28 @@ describe('parseMetadata', () => {
     expect(metadata.archived).toBe(true)
   })
 
+  it('should extract completed-at date', () => {
+    const { metadata, displayContent } = parseMetadata('Task completed-at:2025-06-15')
+    expect(metadata.completedAt).toBe('2025-06-15')
+    expect(displayContent).toBe('Task')
+  })
+
+  it('should handle case-insensitive completed-at', () => {
+    const { metadata } = parseMetadata('Task Completed-At:2025-06-15')
+    expect(metadata.completedAt).toBe('2025-06-15')
+  })
+
+  it('should extract knowledge flag', () => {
+    const { metadata, displayContent } = parseMetadata('Auth patterns knowledge:true')
+    expect(metadata.knowledge).toBe(true)
+    expect(displayContent).toBe('Auth patterns')
+  })
+
+  it('should handle case-insensitive knowledge', () => {
+    const { metadata } = parseMetadata('Task Knowledge:True')
+    expect(metadata.knowledge).toBe(true)
+  })
+
   it('should return empty metadata for plain text', () => {
     const { metadata, displayContent } = parseMetadata('Just a simple task')
     expect(metadata).toEqual(emptyMetadata())
@@ -104,7 +128,7 @@ describe('parseMetadata', () => {
 
   it('should parse all tokens combined', () => {
     const content =
-      'Implement feature @alice @bob #backend #api priority:high due:2025-04-01 est:12h created-by:sarah built-by:alex archived:true'
+      'Implement feature @alice @bob #backend #api priority:high due:2025-04-01 est:12h created-by:sarah built-by:alex completed-at:2025-04-02 knowledge:true archived:true'
     const { metadata, displayContent } = parseMetadata(content)
 
     expect(metadata.assignees).toEqual(['alice', 'bob'])
@@ -114,6 +138,8 @@ describe('parseMetadata', () => {
     expect(metadata.estimate).toBe(12)
     expect(metadata.createdBy).toBe('sarah')
     expect(metadata.builtBy).toBe('alex')
+    expect(metadata.completedAt).toBe('2025-04-02')
+    expect(metadata.knowledge).toBe(true)
     expect(metadata.archived).toBe(true)
     expect(displayContent).toBe('Implement feature')
   })
@@ -131,7 +157,7 @@ describe('parseMetadata', () => {
 
   it('should strip all tokens cleanly from display content', () => {
     const { displayContent } = parseMetadata(
-      'Task @user #label priority:high due:2025-01-01 est:5h created-by:x built-by:y archived:true'
+      'Task @user #label priority:high due:2025-01-01 est:5h created-by:x built-by:y completed-at:2025-01-02 knowledge:true archived:true'
     )
     expect(displayContent).toBe('Task')
     // No extra whitespace
@@ -188,6 +214,18 @@ describe('serializeMetadata', () => {
     expect(result).toContain('archived:true')
   })
 
+  it('should append completed-at date', () => {
+    const meta = { ...emptyMetadata(), completedAt: '2025-06-15' }
+    const result = serializeMetadata('Task', meta)
+    expect(result).toBe('Task completed-at:2025-06-15')
+  })
+
+  it('should append knowledge flag', () => {
+    const meta = { ...emptyMetadata(), knowledge: true }
+    const result = serializeMetadata('Task', meta)
+    expect(result).toBe('Task knowledge:true')
+  })
+
   it('should serialize all tokens in correct order', () => {
     const meta: TaskMetadata = {
       assignees: ['alice'],
@@ -197,11 +235,13 @@ describe('serializeMetadata', () => {
       estimate: 8,
       createdBy: 'sarah',
       builtBy: 'alex',
+      completedAt: '2025-04-02',
+      knowledge: true,
       archived: true,
     }
     const result = serializeMetadata('Task', meta)
     expect(result).toBe(
-      'Task @alice #backend priority:high due:2025-04-01 est:8h created-by:sarah built-by:alex archived:true'
+      'Task @alice #backend priority:high due:2025-04-01 est:8h created-by:sarah built-by:alex completed-at:2025-04-02 knowledge:true archived:true'
     )
   })
 })
@@ -217,6 +257,8 @@ describe('parseMetadata ↔ serializeMetadata round-trip', () => {
       createdBy: 'sarah',
       builtBy: null,
       archived: false,
+      completedAt: null,
+      knowledge: false,
     }
     const serialized = serializeMetadata('Build feature', original)
     const { metadata, displayContent } = parseMetadata(serialized)
@@ -230,5 +272,29 @@ describe('parseMetadata ↔ serializeMetadata round-trip', () => {
     expect(metadata.createdBy).toBe(original.createdBy)
     expect(metadata.builtBy).toBeNull()
     expect(metadata.archived).toBe(false)
+    expect(metadata.completedAt).toBeNull()
+    expect(metadata.knowledge).toBe(false)
+  })
+
+  it('should round-trip knowledge metadata correctly', () => {
+    const original: TaskMetadata = {
+      assignees: [],
+      labels: ['architecture'],
+      priority: null,
+      dueDate: null,
+      estimate: null,
+      createdBy: null,
+      builtBy: null,
+      archived: false,
+      completedAt: '2025-06-15',
+      knowledge: true,
+    }
+    const serialized = serializeMetadata('Auth patterns', original)
+    const { metadata, displayContent } = parseMetadata(serialized)
+
+    expect(displayContent).toBe('Auth patterns')
+    expect(metadata.labels).toEqual(['architecture'])
+    expect(metadata.completedAt).toBe('2025-06-15')
+    expect(metadata.knowledge).toBe(true)
   })
 })

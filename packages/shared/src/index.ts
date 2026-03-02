@@ -5,8 +5,10 @@ export type {
   Column,
   DocumentState,
   BoardMeta,
+  BoardVocabulary,
   IdCache,
   BoardFile,
+  ItemType,
   Project,
 } from './types.js'
 
@@ -54,3 +56,7 @@ export {
 
 // Default Document
 export { DEFAULT_MARKDOWN } from './default-document.js'
+
+// Prompt Catalog
+export type { PromptDefinition, TemplatePrompt, TemplatePromptPlaceholder } from './prompt-catalog.js'
+export { MCP_PROMPTS, TEMPLATE_PROMPTS } from './prompt-catalog.js'

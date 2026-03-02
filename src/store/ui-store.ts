@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type ViewMode = 'dashboard' | 'editor' | 'checklist' | 'kanban'
+export type ViewMode = 'dashboard' | 'editor' | 'checklist' | 'kanban' | 'document' | 'memory' | 'prompts'
 
 interface UiStore {
   activeView: ViewMode
@@ -26,7 +26,7 @@ interface UiStore {
 export const useUiStore = create<UiStore>()(
   persist(
     (set) => ({
-      activeView: 'editor',
+      activeView: 'checklist',
       setActiveView: (view) => set({ activeView: view }),
 
       editorPanelWidth: 50,
