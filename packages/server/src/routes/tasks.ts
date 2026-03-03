@@ -132,23 +132,25 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         case 'toggle': {
           newAst = toggleTask(ast, taskId)
           // Auto-stamp completed-at when toggling
-          const { tasks: parsedTasks } = extractTasksAndColumns(newAst)
-          const toggledTask = parsedTasks.find(t => t.id === taskId)
-          if (toggledTask) {
-            const today = new Date().toISOString().slice(0, 10)
-            if (toggledTask.checked) {
-              // Stamp completed-at date
-              newAst = updateTaskMetadata(
-                newAst, taskId, toggledTask.displayContent,
-                { ...toggledTask.metadata, completedAt: today }
-              )
-            } else if (toggledTask.metadata.completedAt) {
-              // Clear completed-at date
-              newAst = updateTaskMetadata(
-                newAst, taskId, toggledTask.displayContent,
-                { ...toggledTask.metadata, completedAt: null }
-              )
+          try {
+            const { tasks: parsedTasks } = extractTasksAndColumns(newAst)
+            const toggledTask = parsedTasks.find(t => t.id === taskId)
+            if (toggledTask) {
+              const today = new Date().toISOString().slice(0, 10)
+              if (toggledTask.checked) {
+                newAst = updateTaskMetadata(
+                  newAst, taskId, toggledTask.displayContent,
+                  { ...toggledTask.metadata, completedAt: today }
+                )
+              } else if (toggledTask.metadata.completedAt) {
+                newAst = updateTaskMetadata(
+                  newAst, taskId, toggledTask.displayContent,
+                  { ...toggledTask.metadata, completedAt: null }
+                )
+              }
             }
+          } catch (metaErr) {
+            console.warn(`[tasks] Failed to stamp completedAt for task ${taskId}:`, metaErr)
           }
           break
         }

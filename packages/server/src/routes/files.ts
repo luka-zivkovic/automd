@@ -89,6 +89,10 @@ filesRouter.post('/', async (req, res, next) => {
     broadcast({ type: 'file:created', payload: { id: file.id, name: file.name, actor } })
     res.status(201).json(file)
   } catch (err) {
+    if (err instanceof Error && err.message.includes('already exists')) {
+      res.status(409).json({ error: 'A file with this ID already exists' })
+      return
+    }
     next(err)
   }
 })

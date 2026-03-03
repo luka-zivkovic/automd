@@ -182,6 +182,9 @@ export function createFile(
 ): BoardFile {
   try {
     const manifest = readManifest()
+    if (manifest.files.some((f) => f.id === id)) {
+      throw new StorageError(`File with ID '${id}' already exists`)
+    }
     const existingFilenames = manifest.files.map((f) => f.filename)
     const filename = uniqueFilename(name, existingFilenames)
     const now = Date.now()
