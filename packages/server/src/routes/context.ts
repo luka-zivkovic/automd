@@ -117,10 +117,12 @@ contextRouter.get('/', (req, res, next) => {
 
 function flattenTasks(tasks: Task[]): Task[] {
   const result: Task[] = []
-  for (const task of tasks) {
+  const stack = [...tasks]
+  while (stack.length > 0) {
+    const task = stack.pop()!
     result.push(task)
-    if (task.children.length > 0) {
-      result.push(...flattenTasks(task.children))
+    for (let i = task.children.length - 1; i >= 0; i--) {
+      stack.push(task.children[i])
     }
   }
   return result
