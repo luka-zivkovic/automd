@@ -23,6 +23,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build shared package
+        run: pnpm --filter @automd/shared build
+
       - name: Type check
         run: pnpm tsc --noEmit
 
