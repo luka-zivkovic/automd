@@ -11,6 +11,7 @@ import { KanbanView } from '@/components/kanban/KanbanView'
 import { DocumentView } from '@/components/document/DocumentView'
 import { MemoryView } from '@/components/memory/MemoryView'
 import { PromptLibrary } from '@/components/prompts/PromptLibrary'
+import { ConnectView } from '@/components/connect/ConnectView'
 import { FileDropZone } from '@/components/editor/FileDropZone'
 import { TaskDetailPanel } from '@/components/detail/TaskDetailPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -23,6 +24,7 @@ import { LoginPage } from '@/components/auth/LoginPage'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useActiveFileSync } from '@/hooks/useActiveFileSync'
 import { useServerSync } from '@/hooks/useServerSync'
+import { useUrlSync } from '@/hooks/useUrlSync'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from 'sonner'
 import { API_BASE, HAS_SERVER } from '@/lib/api'
@@ -35,6 +37,7 @@ function App() {
   useKeyboardShortcuts()
   useActiveFileSync()
   useServerSync()
+  useUrlSync()
 
   // Check auth status on mount
   useEffect(() => {
@@ -139,6 +142,8 @@ function App() {
                 <>
                   {activeView === 'memory' ? (
                     <MemoryView />
+                  ) : activeView === 'connect' ? (
+                    <ConnectView />
                   ) : activeView === 'prompts' ? (
                     <PromptLibrary />
                   ) : activeView === 'dashboard' || !activeFileId ? (

@@ -4,6 +4,7 @@ import * as storage from '../storage.js'
 import { broadcast } from '../ws.js'
 import { withWriteLock } from '../write-lock.js'
 import { isValidId, isValidName } from '../validation.js'
+import { dispatchWebhookEvent } from '../webhook-delivery.js'
 
 export const projectsRouter = Router()
 
@@ -31,6 +32,7 @@ projectsRouter.post('/', async (req, res, next) => {
     })
 
     broadcast({ type: 'project:created', payload: project })
+    dispatchWebhookEvent('project.created', { projectId: project.id, projectName: project.name, color: project.color })
     res.status(201).json(project)
   } catch (err) {
     next(err)
@@ -57,6 +59,7 @@ projectsRouter.put('/:id', async (req, res, next) => {
     }
 
     broadcast({ type: 'project:updated', payload: project })
+    dispatchWebhookEvent('project.updated', { projectId: project.id, projectName: project.name, color: project.color })
     res.json(project)
   } catch (err) {
     next(err)
@@ -81,6 +84,7 @@ projectsRouter.delete('/:id', async (req, res, next) => {
     }
 
     broadcast({ type: 'project:deleted', payload: { id: req.params.id } })
+    dispatchWebhookEvent('project.deleted', { projectId: req.params.id, projectName: '' })
     res.status(204).send()
   } catch (err) {
     next(err)
