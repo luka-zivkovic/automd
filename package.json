@@ -3,6 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "Markdown-native task management for AI-powered workflows",
+  "homepage": "https://github.com/luka-zivkovic/automd",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luka-zivkovic/automd.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luka-zivkovic/automd/issues"
+  },
+  "keywords": ["task-management", "markdown", "mcp", "ai", "kanban", "project-management"],
   "scripts": {
     "dev": "concurrently --raw \"pnpm dev:server\" \"pnpm dev:web\"",
     "dev:web": "vite",

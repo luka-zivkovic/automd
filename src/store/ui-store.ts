@@ -1,7 +1,7 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, subscribeWithSelector } from 'zustand/middleware'
 
-export type ViewMode = 'dashboard' | 'editor' | 'checklist' | 'kanban' | 'document' | 'memory' | 'prompts'
+export type ViewMode = 'dashboard' | 'editor' | 'checklist' | 'kanban' | 'document' | 'memory' | 'prompts' | 'connect'
 
 interface UiStore {
   activeView: ViewMode
@@ -24,34 +24,35 @@ interface UiStore {
 }
 
 export const useUiStore = create<UiStore>()(
-  persist(
-    (set) => ({
-      activeView: 'checklist',
-      setActiveView: (view) => set({ activeView: view }),
+  subscribeWithSelector(
+    persist(
+      (set) => ({
+        activeView: 'checklist',
+        setActiveView: (view) => set({ activeView: view }),
 
-      editorPanelWidth: 50,
-      setEditorPanelWidth: (width) => set({ editorPanelWidth: width }),
+        editorPanelWidth: 50,
+        setEditorPanelWidth: (width) => set({ editorPanelWidth: width }),
 
-      selectedTaskId: null,
-      setSelectedTaskId: (id) => set({ selectedTaskId: id }),
+        selectedTaskId: null,
+        setSelectedTaskId: (id) => set({ selectedTaskId: id }),
 
-      sidebarOpen: false,
-      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+        sidebarOpen: true,
+        setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-      commandPaletteOpen: false,
-      setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+        commandPaletteOpen: false,
+        setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
 
-      showSplitEditor: false,
-      toggleSplitEditor: () => set((s) => ({ showSplitEditor: !s.showSplitEditor })),
-    }),
-    {
-      name: 'automd-ui',
-      partialize: (state) => ({
-        activeView: state.activeView,
-        editorPanelWidth: state.editorPanelWidth,
-        sidebarOpen: state.sidebarOpen,
-        showSplitEditor: state.showSplitEditor,
+        showSplitEditor: false,
+        toggleSplitEditor: () => set((s) => ({ showSplitEditor: !s.showSplitEditor })),
       }),
-    }
+      {
+        name: 'automd-ui',
+        partialize: (state) => ({
+          editorPanelWidth: state.editorPanelWidth,
+          sidebarOpen: state.sidebarOpen,
+          showSplitEditor: state.showSplitEditor,
+        }),
+      }
+    )
   )
 )

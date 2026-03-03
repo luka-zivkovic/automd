@@ -5,6 +5,7 @@ import { broadcast } from '../ws.js'
 import { withWriteLock } from '../write-lock.js'
 import { isValidId, isValidName } from '../validation.js'
 import { parseBoard, invalidateBoardCache } from '../board-cache.js'
+import { dispatchWebhookEvent } from '../webhook-delivery.js'
 
 export const filesRouter = Router()
 
@@ -87,6 +88,7 @@ filesRouter.post('/', async (req, res, next) => {
 
     const actor = req.body.actor || undefined
     broadcast({ type: 'file:created', payload: { id: file.id, name: file.name, actor } })
+    dispatchWebhookEvent('board.created', { boardId: file.id, boardName: file.name })
     res.status(201).json(file)
   } catch (err) {
     if (err instanceof Error && err.message.includes('already exists')) {
@@ -127,6 +129,7 @@ filesRouter.put('/:id', async (req, res, next) => {
         const file = storage.updateFileMarkdown(req.params.id, markdown)
         if (!file) return { status: 404 as const }
         broadcast({ type: 'file:updated', payload: { id: file.id, markdown: file.markdown, actor } })
+        dispatchWebhookEvent('board.updated', { boardId: file.id, boardName: file.name })
         return { status: 200 as const, file }
       }
 
@@ -159,6 +162,8 @@ filesRouter.delete('/:id', async (req, res, next) => {
   }
 
   try {
+    // Capture name before deletion for webhook payload
+    const fileBeforeDelete = storage.getFile(req.params.id)
     const deleted = await withWriteLock(() => {
       return storage.deleteFile(req.params.id)
     })
@@ -169,6 +174,10 @@ filesRouter.delete('/:id', async (req, res, next) => {
     }
     invalidateBoardCache(req.params.id)
     broadcast({ type: 'file:deleted', payload: { id: req.params.id, actor: req.body?.actor } })
+    dispatchWebhookEvent('board.deleted', {
+      boardId: req.params.id,
+      boardName: fileBeforeDelete?.name ?? '',
+    })
     res.status(204).send()
   } catch (err) {
     next(err)

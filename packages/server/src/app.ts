@@ -8,6 +8,7 @@ import { tasksRouter } from './routes/tasks.js'
 import { columnsRouter } from './routes/columns.js'
 import { projectsRouter } from './routes/projects.js'
 import { contextRouter } from './routes/context.js'
+import { webhooksRouter } from './routes/webhooks.js'
 import { getStoragePath, StorageError } from './storage.js'
 import { getUpdateInfo } from './update-check.js'
 import { requireAuth } from './auth-middleware.js'
@@ -47,6 +48,7 @@ export function createApp() {
   app.use('/api/files/:fileId/columns', columnsRouter)
   app.use('/api/projects', projectsRouter)
   app.use('/api/context', contextRouter)
+  app.use('/api/webhooks', webhooksRouter)
 
   // In production, serve the Vite-built frontend as static files
   if (process.env.NODE_ENV === 'production') {

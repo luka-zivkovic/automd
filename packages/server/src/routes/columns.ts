@@ -7,6 +7,7 @@ import {
 import * as storage from '../storage.js'
 import { broadcast } from '../ws.js'
 import { parseBoard } from '../board-cache.js'
+import { dispatchWebhookEvent } from '../webhook-delivery.js'
 
 type ColumnParams = { fileId: string; columnId: string }
 
@@ -16,6 +17,7 @@ function saveAndBroadcast(fileId: string, markdown: string) {
   const file = storage.updateFileMarkdown(fileId, markdown)
   if (file) {
     broadcast({ type: 'file:updated', payload: { id: file.id, markdown: file.markdown } })
+    dispatchWebhookEvent('board.updated', { boardId: file.id, boardName: file.name })
   }
   return file
 }
