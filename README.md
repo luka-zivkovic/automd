@@ -20,8 +20,9 @@
 
 ## Features
 
+- **Three item types** — kanban boards, checklists, and free-form pages for docs/knowledge
 - **Four views** — dashboard, rich markdown editor, checklist, and drag-and-drop kanban
-- **Plain markdown storage** — tasks are `.md` files, no proprietary database
+- **Plain markdown storage** — items are `.md` files, no proprietary database
 - **MCP server** — Claude Desktop and Claude Code can manage your boards directly
 - **Real-time sync** — WebSocket-based live updates across all connected clients
 - **Inline metadata** — assignees, labels, priority, due dates, estimates as plain text tokens
@@ -123,7 +124,7 @@ Authorization: Bearer <your-api-key>
 
 ## MCP Integration
 
-AutoMD ships with an MCP server that lets AI agents manage boards, tasks, and columns.
+AutoMD ships with an MCP server that lets AI agents manage items (boards, checklists, pages), tasks, and columns.
 
 ### Claude Desktop
 
@@ -245,9 +246,9 @@ Data is stored at `~/.automd/` (or `AUTOMD_STORAGE_DIR`):
 
 ```
 ~/.automd/
-├── manifest.json     # Board and project metadata index
+├── manifest.json     # Item and project metadata index
 └── boards/
-    ├── my-board.md   # Board content as markdown
+    ├── my-board.md   # Item content as markdown (boards, checklists, pages)
     └── ...
 ```
 

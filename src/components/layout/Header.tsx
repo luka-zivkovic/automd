@@ -112,7 +112,7 @@ export function Header() {
             </>
           )}
 
-          {totalCount > 0 && !isNote && (
+          {totalCount > 0 && !isPage && (
             <div className="flex items-center gap-2.5">
               <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div
