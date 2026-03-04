@@ -13,11 +13,16 @@ export function registerSystemPrompts(server: McpServer) {
 
 ## Core Concepts
 
-**Boards** are markdown files with columns (H1) and tasks (H2). Each board has YAML frontmatter with metadata.
+AutoMD has three item types:
+- **Boards** — Kanban-style markdown files with columns (H1) and tasks (H2). Each has YAML frontmatter with metadata.
+- **Checklists** — Task lists using ## (H2) headings with [ ]/[x] checkbox prefixes. Great for simple to-do lists and tracking.
+- **Pages** — Free-form markdown documents for knowledge, specs, documentation, and reference material.
+
+All three types support YAML frontmatter, descriptions, acceptance criteria, subtasks, and learnings.
 
 **Knowledge items** are tasks with \`knowledge:true\` — they store decisions, patterns, references, and institutional memory. They use the same task infrastructure but represent knowledge, not work to be done.
 
-**Vocabulary** (optional YAML frontmatter) defines domain-specific label dimensions for a board:
+**Vocabulary** (optional YAML frontmatter) defines domain-specific label dimensions for an item:
 \`\`\`yaml
 vocabulary:
   technology: [react, node, python]
@@ -57,13 +62,13 @@ Description paragraph — background, context, the "why".
 - Use \`synthesize_topic\` to assemble context briefs about a topic
 
 ## Available Tools
-- Board management: list_boards, get_board, create_board, delete_board, rename_board
+- Item management: list_items, get_item, create_item (supports board/checklist/page types), delete_item, rename_item
 - Task management: add_task, update_task, toggle_task, move_task, delete_task
 - Metadata: update_task_metadata, update_acceptance_criteria, update_learnings
 - Knowledge: add_knowledge, update_knowledge, find_knowledge, synthesize_topic, import_memories
 - Search: search_tasks, search_context
 - Bulk: bulk_update_tasks, archive_completed_tasks
-- Projects: list_projects, get_project_boards
+- Projects: list_projects, get_project_items, create_project
 
 Always use the most specific tool for the job. Prefer knowledge tools for knowledge management over raw task tools.`,
         },

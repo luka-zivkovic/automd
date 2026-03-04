@@ -18,7 +18,7 @@ class ApiError extends Error {
         hint = 'Check that all required parameters are provided and correctly formatted.'
         break
       case 404:
-        hint = 'The requested resource does not exist. Use list_boards to see available board IDs.'
+        hint = 'The requested resource does not exist. Use list_items to see available item IDs.'
         break
       case 409:
         hint = 'The resource was modified by another client. Re-fetch the resource and retry your operation.'

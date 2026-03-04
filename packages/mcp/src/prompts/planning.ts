@@ -6,11 +6,11 @@ export function registerPlanningPrompts(server: McpServer) {
   server.registerPrompt('sprint_planning', {
     description: 'Help plan next sprint from backlog',
     argsSchema: {
-      boardId: z.string().describe('The board ID to plan from'),
+      itemId: z.string().describe('The item ID to plan from'),
       sprintCapacityHours: z.number().optional().describe('Total sprint capacity in hours'),
     },
-  }, async ({ boardId, sprintCapacityHours }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId, sprintCapacityHours }) => {
+    const board = await api.getFile(itemId)
     const boardJson = JSON.stringify(board, null, 2)
 
     const capacityNote = sprintCapacityHours
@@ -46,11 +46,11 @@ Provide specific tool calls the agent can execute to move tasks into the sprint 
   server.registerPrompt('estimate_tasks', {
     description: 'Estimate effort for unestimated tasks on a board',
     argsSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       columnId: z.string().optional().describe('Optional column ID to scope estimation'),
     },
-  }, async ({ boardId, columnId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId, columnId }) => {
+    const board = await api.getFile(itemId)
     const allTasks = board.columns.flatMap((c: { id: string; tasks: unknown[] }) =>
       columnId ? (c.id === columnId ? c.tasks : []) : c.tasks
     )
@@ -81,10 +81,10 @@ Provide update_task_metadata tool calls to set estimates.`,
   server.registerPrompt('dependency_analysis', {
     description: 'Analyze task dependencies and suggest ordering',
     argsSchema: {
-      boardId: z.string().describe('The board ID to analyze'),
+      itemId: z.string().describe('The item ID to analyze'),
     },
-  }, async ({ boardId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId }) => {
+    const board = await api.getFile(itemId)
     const boardJson = JSON.stringify(board, null, 2)
 
     return {

@@ -53,9 +53,9 @@ export function Header() {
   const totalCount = tasks.length
   const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
-  // Show board view toggle only when a non-note file is selected and we're in a file view
-  const isNote = activeFile?.itemType === 'note'
-  const showViewToggle = activeFile && !isNote && activeView !== 'memory' && activeView !== 'prompts' && activeView !== 'dashboard' && activeView !== 'document'
+  // Show board view toggle only when a non-page file is selected and we're in a file view
+  const isPage = activeFile?.itemType === 'page'
+  const showViewToggle = activeFile && !isPage && activeView !== 'memory' && activeView !== 'prompts' && activeView !== 'dashboard' && activeView !== 'document'
 
   return (
     <header className="shrink-0 relative z-10">

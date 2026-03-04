@@ -6,11 +6,11 @@ export function registerWorkflowPrompts(server: McpServer) {
   server.registerPrompt('decompose_task', {
     description: 'Break down a complex task into subtasks with estimates',
     argsSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID to decompose'),
     },
-  }, async ({ boardId, taskId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId, taskId }) => {
+    const board = await api.getFile(itemId)
     const allTasks = board.columns.flatMap((c: { tasks: unknown[] }) => c.tasks)
     const task = allTasks.find((t: { id: string }) => t.id === taskId)
     const taskJson = JSON.stringify(task, null, 2)
@@ -40,11 +40,11 @@ Provide the specific add_subtask tool calls to create each subtask.`,
   server.registerPrompt('write_acceptance_criteria', {
     description: 'Write acceptance criteria for a task',
     argsSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
     },
-  }, async ({ boardId, taskId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId, taskId }) => {
+    const board = await api.getFile(itemId)
     const allTasks = board.columns.flatMap((c: { tasks: unknown[] }) => c.tasks)
     const task = allTasks.find((t: { id: string }) => t.id === taskId)
     const taskJson = JSON.stringify(task, null, 2)
@@ -92,7 +92,7 @@ Please:
 3. Create initial tasks to get started (including knowledge items for key decisions)
 4. Set up a knowledge base board alongside the task board if the project would benefit from it
 
-Use create_board with appropriate markdown including YAML frontmatter with vocabulary. Then add initial tasks with add_task and add_knowledge.`,
+Use create_item with appropriate markdown including YAML frontmatter with vocabulary. Then add initial tasks with add_task and add_knowledge.`,
         },
       }],
     }
@@ -141,7 +141,7 @@ I'll paste my notes/memories below. Please:
 1. Parse the content into individual knowledge items
 2. Categorize each with appropriate labels
 3. Use import_memories to bulk-create them on an appropriate board
-4. If no knowledge board exists, create one first with create_board
+4. If no knowledge board exists, create one first with create_item
 
 Each imported item should have:
 - A clear, concise title
