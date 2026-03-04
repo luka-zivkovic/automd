@@ -1,7 +1,7 @@
 {
   "name": "automd-mcp",
-  "version": "0.1.0",
-  "description": "MCP server for AutoMD — manage Kanban boards stored as markdown",
+  "version": "0.2.0",
+  "description": "MCP server for AutoMD — manage boards, checklists, and pages stored as markdown",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {

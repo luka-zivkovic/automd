@@ -10,7 +10,7 @@ import type { BoardFile } from '@/lib/markdown/types'
 const ITEM_TYPE_ICON = {
   board: LayoutGrid,
   checklist: CheckSquare,
-  note: FileText,
+  page: FileText,
 } as const
 import { formatRelativeDate } from '@/lib/format-relative-date'
 
@@ -74,13 +74,13 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
     if (!isRenaming) {
       setActiveFile(file.id)
       const view = useUiStore.getState().activeView
-      if (file.itemType === 'note') {
-        // Notes always open in document view
+      if (file.itemType === 'page') {
+        // Pages always open in document view
         if (view !== 'document') {
           useUiStore.getState().setActiveView('document')
         }
       } else if (view === 'document' || view === 'dashboard' || view === 'memory' || view === 'prompts') {
-        // Non-note files: switch away from non-board views
+        // Non-page files: switch away from non-board views
         useUiStore.getState().setActiveView('checklist')
       }
     }

@@ -116,7 +116,7 @@ function StatCard({ label, value, icon: Icon, variant = 'default' }: {
 const ITEM_TYPE_ICON: Record<string, LucideIcon> = {
   board: LayoutGrid,
   checklist: CheckSquare,
-  note: FileText,
+  page: FileText,
 }
 
 function BoardCard({ board }: { board: BoardSummary }) {
@@ -292,7 +292,7 @@ export function DashboardView() {
   if (data.totalItems === 0) {
     const boardTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'board')
     const checklistTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'checklist')
-    const noteTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'note')
+    const pageTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'page')
 
     return (
       <div className="h-full flex flex-col">
@@ -397,7 +397,7 @@ export function DashboardView() {
                 {[
                   { label: 'Boards', items: boardTemplates },
                   { label: 'Checklists', items: checklistTemplates },
-                  { label: 'Notes', items: noteTemplates },
+                  { label: 'Pages', items: pageTemplates },
                 ].map(({ label, items }) =>
                   items.length > 0 && (
                     <div key={label}>

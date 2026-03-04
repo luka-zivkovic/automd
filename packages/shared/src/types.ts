@@ -61,7 +61,7 @@ export interface IdCache {
   ids: Map<string, string> // id -> fingerprint
 }
 
-export type ItemType = 'board' | 'checklist' | 'note'
+export type ItemType = 'board' | 'checklist' | 'page'
 
 export interface BoardFile {
   id: string

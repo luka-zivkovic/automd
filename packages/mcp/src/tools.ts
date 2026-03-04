@@ -41,88 +41,89 @@ function errorResponse(err: unknown) {
 }
 
 export function registerTools(server: McpServer) {
-  // ─── Board Tools ─────────────────────────────────────────────────
+  // ─── Item Tools ─────────────────────────────────────────────────
 
-  server.registerTool('list_boards', {
-    title: 'List Boards',
-    description: 'List all boards with their task counts',
+  server.registerTool('list_items', {
+    title: 'List Items',
+    description: 'List all items (boards, checklists, and pages) with their task counts',
   }, async () => {
     try {
-      const boards = await api.listFiles()
-      return json(boards)
+      const items = await api.listFiles()
+      return json(items)
     } catch (err) {
       return errorResponse(err)
     }
   })
 
-  server.registerTool('get_board', {
-    title: 'Get Board',
-    description: 'Get a board with its columns and tasks',
-    inputSchema: { boardId: z.string().describe('The board ID') },
-  }, async ({ boardId }) => {
+  server.registerTool('get_item', {
+    title: 'Get Item',
+    description: 'Get an item (board, checklist, or page) with its columns and tasks',
+    inputSchema: { itemId: z.string().describe('The item ID') },
+  }, async ({ itemId }) => {
     try {
-      const board = await api.getFile(boardId)
-      return json(board)
+      const item = await api.getFile(itemId)
+      return json(item)
     } catch (err) {
       return errorResponse(err)
     }
   })
 
-  server.registerTool('get_board_markdown', {
-    title: 'Get Board Markdown',
-    description: 'Get the raw markdown content of a board',
-    inputSchema: { boardId: z.string().describe('The board ID') },
-  }, async ({ boardId }) => {
+  server.registerTool('get_item_markdown', {
+    title: 'Get Item Markdown',
+    description: 'Get the raw markdown content of an item (board, checklist, or page)',
+    inputSchema: { itemId: z.string().describe('The item ID') },
+  }, async ({ itemId }) => {
     try {
-      const board = await api.getFile(boardId)
-      return text(board.markdown)
+      const item = await api.getFile(itemId)
+      return text(item.markdown)
     } catch (err) {
       return errorResponse(err)
     }
   })
 
-  server.registerTool('create_board', {
-    title: 'Create Board',
-    description: 'Create a new board. Optionally provide initial markdown content. Format: YAML frontmatter (---) for board metadata, # (H1) for columns, ## (H2) for tasks. Plain paragraphs under tasks = description. Blockquotes (>) under tasks = acceptance criteria. Subtasks are GFM checkboxes (- [ ] / - [x]).',
+  server.registerTool('create_item', {
+    title: 'Create Item',
+    description: 'Create a new board, checklist, or page. Boards use # (H1) for columns and ## (H2) for tasks. Checklists use ## (H2) with [ ]/[x] prefixes. Pages are free-form markdown for knowledge, specs, and documentation. All support YAML frontmatter, plain paragraphs (description), blockquotes (>) for acceptance criteria, and GFM checkboxes for subtasks.',
     inputSchema: {
-      name: z.string().describe('Name for the new board'),
+      name: z.string().describe('Name for the new item'),
+      itemType: z.enum(['board', 'checklist', 'page']).optional().describe('Type of item to create: board (kanban columns), checklist (task list with checkboxes), or page (free-form markdown for knowledge and documentation). Defaults to board'),
       markdown: z.string().optional().describe('Initial markdown content. Start with YAML frontmatter (board:, description:). Use # for columns, ## for tasks. Paragraphs = description, blockquotes (>) = acceptance criteria, checkboxes = subtasks'),
-      projectId: z.string().optional().describe('Project ID to add the board to (optional)'),
+      projectId: z.string().optional().describe('Project ID to add the item to (optional)'),
     },
-  }, async ({ name, markdown, projectId }) => {
+  }, async ({ name, itemType, markdown, projectId }) => {
     try {
-      const board = await api.createFile(name, markdown, projectId)
-      return json(board)
+      const item = await api.createFile(name, markdown, projectId, itemType)
+      return json(item)
     } catch (err) {
       return errorResponse(err)
     }
   })
 
-  server.registerTool('delete_board', {
-    title: 'Delete Board',
-    description: 'Permanently delete a board and all its tasks',
+  server.registerTool('delete_item', {
+    title: 'Delete Item',
+    description: 'Permanently delete an item (board, checklist, or page) and all its contents',
     inputSchema: {
-      boardId: z.string().describe('The board ID to delete'),
+      itemId: z.string().describe('The item ID to delete'),
     },
-  }, async ({ boardId }) => {
+  }, async ({ itemId }) => {
     try {
-      await api.deleteFile(boardId)
-      return text('Board deleted')
+      await api.deleteFile(itemId)
+      return text('Item deleted')
     } catch (err) {
       return errorResponse(err)
     }
   })
 
-  server.registerTool('rename_board', {
-    title: 'Rename Board',
-    description: 'Rename an existing board',
+  server.registerTool('rename_item', {
+    title: 'Rename Item',
+    description: 'Rename an existing item (board, checklist, or page)',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
-      name: z.string().describe('New name for the board'),
+      itemId: z.string().describe('The item ID'),
+      name: z.string().describe('New name for the item'),
     },
-  }, async ({ boardId, name }) => {
+  }, async ({ itemId, name }) => {
     try {
-      const result = await api.updateFile(boardId, { name })
+      const result = await api.updateFile(itemId, { name })
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -135,15 +136,15 @@ export function registerTools(server: McpServer) {
     title: 'Add Task',
     description: 'Add a new task (H2 heading) to a column. Content supports inline metadata like @user #label priority:high due:2025-03-20 est:4h',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       columnId: z.string().describe('The column/heading ID to add the task to'),
       content: z.string().describe('Task content with optional inline metadata'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
-  }, async ({ boardId, columnId, content, agentName }) => {
+  }, async ({ itemId, columnId, content, agentName }) => {
     try {
       const finalContent = agentName ? `${content} built-by:${agentName}` : content
-      const result = await api.addTask(boardId, columnId, finalContent)
+      const result = await api.addTask(itemId, columnId, finalContent)
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -154,18 +155,18 @@ export function registerTools(server: McpServer) {
     title: 'Update Task',
     description: 'Update a task\'s content',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
       content: z.string().optional().describe('New task content'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
-  }, async ({ boardId, taskId, content, agentName }) => {
+  }, async ({ itemId, taskId, content, agentName }) => {
     try {
       let finalContent = content
       if (agentName && finalContent) {
         finalContent = finalContent.replace(/\s*built-by:[\w-]+/gi, '') + ` built-by:${agentName}`
       }
-      const result = await api.updateTask(boardId, taskId, {
+      const result = await api.updateTask(itemId, taskId, {
         action: 'updateContent',
         content: finalContent,
       })
@@ -179,12 +180,12 @@ export function registerTools(server: McpServer) {
     title: 'Toggle Task',
     description: 'Toggle a task between checked and unchecked',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
     },
-  }, async ({ boardId, taskId }) => {
+  }, async ({ itemId, taskId }) => {
     try {
-      const result = await api.updateTask(boardId, taskId, { action: 'toggle' })
+      const result = await api.updateTask(itemId, taskId, { action: 'toggle' })
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -195,14 +196,14 @@ export function registerTools(server: McpServer) {
     title: 'Move Task',
     description: 'Move a task to a different column at a specific position',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
       targetColumnId: z.string().describe('Target column ID'),
       targetIndex: z.number().describe('Position in the target column (0-based)'),
     },
-  }, async ({ boardId, taskId, targetColumnId, targetIndex }) => {
+  }, async ({ itemId, taskId, targetColumnId, targetIndex }) => {
     try {
-      const result = await api.updateTask(boardId, taskId, {
+      const result = await api.updateTask(itemId, taskId, {
         action: 'move',
         targetColumnId,
         targetIndex,
@@ -215,14 +216,14 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('delete_task', {
     title: 'Delete Task',
-    description: 'Delete a task from a board',
+    description: 'Delete a task from an item',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
     },
-  }, async ({ boardId, taskId }) => {
+  }, async ({ itemId, taskId }) => {
     try {
-      await api.deleteTask(boardId, taskId)
+      await api.deleteTask(itemId, taskId)
       return text('Task deleted')
     } catch (err) {
       return errorResponse(err)
@@ -233,17 +234,16 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('add_column', {
     title: 'Add Column',
-    description: 'Add a new column (heading) to a board',
+    description: 'Add a new column (H1 heading) to an item',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       title: z.string().describe('Column title'),
     },
-  }, async ({ boardId, title }) => {
+  }, async ({ itemId, title }) => {
     try {
-      // We need to get the board, add a column to the markdown, and update
-      const board = await api.getFile(boardId)
-      const newMarkdown = board.markdown.trimEnd() + `\n\n# ${title}\n\n`
-      const result = await api.updateFile(boardId, { markdown: newMarkdown })
+      const item = await api.getFile(itemId)
+      const newMarkdown = item.markdown.trimEnd() + `\n\n# ${title}\n\n`
+      const result = await api.updateFile(itemId, { markdown: newMarkdown })
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -252,15 +252,15 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('rename_column', {
     title: 'Rename Column',
-    description: 'Rename a column/heading on a board',
+    description: 'Rename a column/heading on an item',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       columnId: z.string().describe('The column ID to rename'),
       title: z.string().describe('New title for the column'),
     },
-  }, async ({ boardId, columnId, title }) => {
+  }, async ({ itemId, columnId, title }) => {
     try {
-      const result = await api.renameColumn(boardId, columnId, title)
+      const result = await api.renameColumn(itemId, columnId, title)
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -269,14 +269,14 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('delete_column', {
     title: 'Delete Column',
-    description: 'Delete a column and all its tasks from a board',
+    description: 'Delete a column and all its tasks from an item',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       columnId: z.string().describe('The column ID to delete'),
     },
-  }, async ({ boardId, columnId }) => {
+  }, async ({ itemId, columnId }) => {
     try {
-      await api.deleteColumn(boardId, columnId)
+      await api.deleteColumn(itemId, columnId)
       return text('Column deleted')
     } catch (err) {
       return errorResponse(err)
@@ -289,7 +289,7 @@ export function registerTools(server: McpServer) {
     title: 'Update Task Metadata',
     description: 'Update a task\'s metadata (priority, assignees, labels, due date, estimate) without rewriting its content',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
       priority: z.enum(['high', 'medium', 'low']).nullable().optional().describe('Task priority'),
       assignees: z.array(z.string()).optional().describe('List of assignees (without @)'),
@@ -298,10 +298,10 @@ export function registerTools(server: McpServer) {
       estimate: z.number().nullable().optional().describe('Time estimate in hours'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
-  }, async ({ boardId, taskId, priority, assignees, labels, dueDate, estimate, agentName }) => {
+  }, async ({ itemId, taskId, priority, assignees, labels, dueDate, estimate, agentName }) => {
     try {
-      const board = await api.getFile(boardId)
-      const task = board.columns
+      const item = await api.getFile(itemId)
+      const task = item.columns
         .flatMap((c: ApiColumn) => c.tasks)
         .find((t: ApiTask) => t.id === taskId)
 
@@ -315,7 +315,7 @@ export function registerTools(server: McpServer) {
       if (estimate !== undefined) metadata.estimate = estimate
       if (agentName) metadata.builtBy = agentName
 
-      const result = await api.updateTask(boardId, taskId, {
+      const result = await api.updateTask(itemId, taskId, {
         action: 'updateMetadata',
         displayContent: task.displayContent,
         metadata,
@@ -330,13 +330,13 @@ export function registerTools(server: McpServer) {
     title: 'Update Acceptance Criteria',
     description: 'Update a task\'s acceptance criteria (rendered as blockquotes in markdown). These are testable conditions that define "done" for a task. Each line becomes a separate blockquote line.',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
       acceptanceCriteria: z.string().nullable().describe('Acceptance criteria text. Each line becomes a blockquote entry. Pass null to remove AC.'),
     },
-  }, async ({ boardId, taskId, acceptanceCriteria }) => {
+  }, async ({ itemId, taskId, acceptanceCriteria }) => {
     try {
-      const result = await api.updateTask(boardId, taskId, {
+      const result = await api.updateTask(itemId, taskId, {
         action: 'updateAcceptanceCriteria',
         acceptanceCriteria,
       })
@@ -350,13 +350,13 @@ export function registerTools(server: McpServer) {
     title: 'Update Learnings',
     description: 'Update a completed task\'s learnings section (rendered as ### Learnings with a bullet list in markdown). Use this to record decisions, insights, and pitfalls discovered while completing a task. Supports #label tags for cross-referencing.',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
       learnings: z.string().nullable().describe('Learnings text. Each line becomes a bullet point under ### Learnings. Use #tags for keywords (e.g. "PKCE flow required for SPA #oauth #security"). Pass null to remove.'),
     },
-  }, async ({ boardId, taskId, learnings }) => {
+  }, async ({ itemId, taskId, learnings }) => {
     try {
-      const result = await api.updateTask(boardId, taskId, {
+      const result = await api.updateTask(itemId, taskId, {
         action: 'updateLearnings',
         learnings,
       })
@@ -372,7 +372,7 @@ export function registerTools(server: McpServer) {
     title: 'Bulk Update Tasks',
     description: 'Update multiple tasks at once. Each update can toggle, move, update content, or update metadata.',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making these changes (tagged as built-by)'),
       updates: z.array(z.object({
         taskId: z.string().describe('The task ID'),
@@ -384,7 +384,7 @@ export function registerTools(server: McpServer) {
         metadata: z.record(z.string(), z.unknown()).optional().describe('Metadata fields (for updateMetadata)'),
       })).describe('Array of task updates to apply'),
     },
-  }, async ({ boardId, agentName, updates }) => {
+  }, async ({ itemId, agentName, updates }) => {
     const results: Array<{ taskId: string; ok: boolean; error?: string }> = []
 
     for (const update of updates) {
@@ -401,7 +401,7 @@ export function registerTools(server: McpServer) {
           }
         }
 
-        await api.updateTask(boardId, taskId, data)
+        await api.updateTask(itemId, taskId, data)
         results.push({ taskId, ok: true })
       } catch (err) {
         results.push({
@@ -424,7 +424,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('search_tasks', {
     title: 'Search Tasks',
-    description: 'Search for tasks across all boards by text, assignee, label, or status',
+    description: 'Search for tasks across all items by text, assignee, label, or status',
     inputSchema: {
       query: z.string().optional().describe('Text to search for in task content'),
       assignee: z.string().optional().describe('Filter by assignee (without @)'),
@@ -433,20 +433,20 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, assignee, label, checked }) => {
     try {
-      const boards = await api.listFiles()
+      const items = await api.listFiles()
       const results: Array<{
-        boardId: string
-        boardName: string
+        itemId: string
+        itemName: string
         taskId: string
         content: string
         column: string
         checked: boolean | null
       }> = []
 
-      for (const boardSummary of boards) {
+      for (const itemSummary of items) {
         try {
-          const board = await api.getFile(boardSummary.id)
-          for (const column of board.columns) {
+          const item = await api.getFile(itemSummary.id)
+          for (const column of item.columns) {
             for (const task of column.tasks) {
               let match = true
               if (query && !task.content.toLowerCase().includes(query.toLowerCase())) match = false
@@ -456,8 +456,8 @@ export function registerTools(server: McpServer) {
 
               if (match) {
                 results.push({
-                  boardId: boardSummary.id,
-                  boardName: boardSummary.name,
+                  itemId: itemSummary.id,
+                  itemName: itemSummary.name,
                   taskId: task.id,
                   content: task.content,
                   column: column.title,
@@ -467,8 +467,7 @@ export function registerTools(server: McpServer) {
             }
           }
         } catch (err) {
-          // Skip boards that fail to load, continue searching others
-          console.error(`[mcp] Failed to search board ${boardSummary.id}:`, err)
+          console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
         }
       }
 
@@ -480,7 +479,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('search_context', {
     title: 'Search Context',
-    description: 'Search for institutional knowledge across all boards. Searches task descriptions, acceptance criteria, and learnings — not just titles. Use this to find relevant context before starting work on a task (e.g. "what do we know about auth?" or "what was learned about pricing?").',
+    description: 'Search for institutional knowledge across all items. Searches task descriptions, acceptance criteria, and learnings — not just titles. Use this to find relevant context before starting work on a task (e.g. "what do we know about auth?" or "what was learned about pricing?").',
     inputSchema: {
       query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content'),
       label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
@@ -488,10 +487,10 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, label, completedOnly }) => {
     try {
-      const boards = await api.listFiles()
+      const items = await api.listFiles()
       const results: Array<{
-        boardId: string
-        boardName: string
+        itemId: string
+        itemName: string
         taskId: string
         taskTitle: string
         taskLabels: string[]
@@ -504,10 +503,10 @@ export function registerTools(server: McpServer) {
 
       const q = query?.toLowerCase()
 
-      for (const boardSummary of boards) {
+      for (const itemSummary of items) {
         try {
-          const board = await api.getFile(boardSummary.id)
-          for (const column of board.columns) {
+          const item = await api.getFile(itemSummary.id)
+          for (const column of item.columns) {
             for (const task of column.tasks) {
               if (completedOnly && !task.checked) continue
 
@@ -534,8 +533,8 @@ export function registerTools(server: McpServer) {
 
               if (match) {
                 results.push({
-                  boardId: boardSummary.id,
-                  boardName: boardSummary.name,
+                  itemId: itemSummary.id,
+                  itemName: itemSummary.name,
                   taskId: task.id,
                   taskTitle: task.displayContent,
                   taskLabels: task.metadata.labels,
@@ -549,7 +548,7 @@ export function registerTools(server: McpServer) {
             }
           }
         } catch (err) {
-          console.error(`[mcp] Failed to search board ${boardSummary.id}:`, err)
+          console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
         }
       }
 
@@ -573,19 +572,35 @@ export function registerTools(server: McpServer) {
     }
   })
 
-  server.registerTool('get_project_boards', {
-    title: 'Get Project Boards',
-    description: 'List all boards belonging to a project',
+  server.registerTool('get_project_items', {
+    title: 'Get Project Items',
+    description: 'List all items (boards, checklists, pages) belonging to a project',
     inputSchema: {
       projectId: z.string().describe('The project ID'),
     },
   }, async ({ projectId }) => {
     try {
-      const allBoards = await api.listFiles()
-      const projectBoards = allBoards.filter(
+      const allItems = await api.listFiles()
+      const projectItems = allItems.filter(
         (b: { projectId: string | null }) => b.projectId === projectId,
       )
-      return json(projectBoards)
+      return json(projectItems)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('create_project', {
+    title: 'Create Project',
+    description: 'Create a new project to organize items',
+    inputSchema: {
+      name: z.string().describe('Name for the new project (max 200 characters)'),
+      color: z.string().optional().describe('Hex color for the project (default: #3b82f6)'),
+    },
+  }, async ({ name, color }) => {
+    try {
+      const project = await api.createProject(name, color)
+      return json(project)
     } catch (err) {
       return errorResponse(err)
     }
@@ -595,9 +610,9 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('add_knowledge', {
     title: 'Add Knowledge',
-    description: 'Add a knowledge item to a board. Knowledge items are tasks with knowledge:true — they store decisions, patterns, references, and institutional memory. They reuse the task infrastructure but skip the checkbox/completion workflow.',
+    description: 'Add a knowledge item. Knowledge items are tasks with knowledge:true — they store decisions, patterns, references, and institutional memory. They reuse the task infrastructure but skip the checkbox/completion workflow.',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       columnId: z.string().describe('The column ID'),
       content: z.string().describe('Knowledge item title (e.g. "Always use parameterized queries for SQL")'),
       description: z.string().optional().describe('Detailed description/context for this knowledge item'),
@@ -605,18 +620,18 @@ export function registerTools(server: McpServer) {
       labels: z.array(z.string()).optional().describe('Labels for categorization (e.g. ["security", "database"])'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Agent name to tag with built-by:'),
     },
-  }, async ({ boardId, columnId, content, description, learnings, labels, agentName }) => {
+  }, async ({ itemId, columnId, content, description, learnings, labels, agentName }) => {
     try {
       // 1. Build content with knowledge:true flag
       let taskContent = `${content} knowledge:true`
       if (labels?.length) taskContent += ' ' + labels.map(l => `#${l}`).join(' ')
       if (agentName) taskContent += ` built-by:${agentName}`
 
-      const result = await api.addTask(boardId, columnId, taskContent)
+      const result = await api.addTask(itemId, columnId, taskContent)
 
       // 2. Add description if provided
       if (description && result?.taskId) {
-        await api.updateTask(boardId, result.taskId, {
+        await api.updateTask(itemId, result.taskId, {
           action: 'updateDescription',
           description,
         })
@@ -624,7 +639,7 @@ export function registerTools(server: McpServer) {
 
       // 3. Add learnings if provided
       if (learnings && result?.taskId) {
-        await api.updateTask(boardId, result.taskId, {
+        await api.updateTask(itemId, result.taskId, {
           action: 'updateLearnings',
           learnings,
         })
@@ -640,18 +655,18 @@ export function registerTools(server: McpServer) {
     title: 'Update Knowledge',
     description: 'Update an existing knowledge item\'s description, learnings, or labels.',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task/knowledge item ID'),
       description: z.string().optional().describe('New description (replaces existing)'),
       learnings: z.string().optional().describe('New learnings (replaces existing). Supports #tags.'),
       labels: z.array(z.string()).optional().describe('New labels (replaces existing)'),
     },
-  }, async ({ boardId, taskId, description, learnings, labels }) => {
+  }, async ({ itemId, taskId, description, learnings, labels }) => {
     try {
       const results: string[] = []
 
       if (description !== undefined) {
-        await api.updateTask(boardId, taskId, {
+        await api.updateTask(itemId, taskId, {
           action: 'updateDescription',
           description,
         })
@@ -659,7 +674,7 @@ export function registerTools(server: McpServer) {
       }
 
       if (learnings !== undefined) {
-        await api.updateTask(boardId, taskId, {
+        await api.updateTask(itemId, taskId, {
           action: 'updateLearnings',
           learnings,
         })
@@ -668,11 +683,11 @@ export function registerTools(server: McpServer) {
 
       if (labels !== undefined) {
         // Fetch current task to preserve displayContent
-        const board = await api.getFile(boardId)
-        const allTasks = board.columns.flatMap((c: ApiColumn) => c.tasks)
+        const item = await api.getFile(itemId)
+        const allTasks = item.columns.flatMap((c: ApiColumn) => c.tasks)
         const task = allTasks.find((t: ApiTask) => t.id === taskId)
         if (task) {
-          await api.updateTask(boardId, taskId, {
+          await api.updateTask(itemId, taskId, {
             action: 'updateMetadata',
             displayContent: task.displayContent,
             metadata: { ...task.metadata, labels },
@@ -689,17 +704,17 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('find_knowledge', {
     title: 'Find Knowledge',
-    description: 'Search for knowledge items across all boards. Returns tasks with knowledge:true OR tasks that have learnings. Use this to find institutional memory, past decisions, and patterns.',
+    description: 'Search for knowledge items across all items. Returns tasks with knowledge:true OR tasks that have learnings. Use this to find institutional memory, past decisions, and patterns.',
     inputSchema: {
       query: z.string().optional().describe('Text to search for in knowledge items'),
       label: z.string().optional().describe('Filter by label (without #)'),
     },
   }, async ({ query, label }) => {
     try {
-      const boards = await api.listFiles()
+      const items = await api.listFiles()
       const results: Array<{
-        boardId: string
-        boardName: string
+        itemId: string
+        itemName: string
         taskId: string
         title: string
         labels: string[]
@@ -710,10 +725,10 @@ export function registerTools(server: McpServer) {
 
       const q = query?.toLowerCase()
 
-      for (const boardSummary of boards) {
+      for (const itemSummary of items) {
         try {
-          const board = await api.getFile(boardSummary.id)
-          for (const column of board.columns) {
+          const item = await api.getFile(itemSummary.id)
+          for (const column of item.columns) {
             for (const task of column.tasks) {
               // Must be knowledge:true OR have learnings
               const isKnowledge = task.metadata?.knowledge === true
@@ -737,8 +752,8 @@ export function registerTools(server: McpServer) {
               }
 
               results.push({
-                boardId: boardSummary.id,
-                boardName: boardSummary.name,
+                itemId: itemSummary.id,
+                itemName: itemSummary.name,
                 taskId: task.id,
                 title: task.displayContent,
                 labels: task.metadata?.labels ?? [],
@@ -749,7 +764,7 @@ export function registerTools(server: McpServer) {
             }
           }
         } catch (err) {
-          console.error(`[mcp] Failed to search board ${boardSummary.id}:`, err)
+          console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
         }
       }
 
@@ -779,7 +794,7 @@ export function registerTools(server: McpServer) {
     title: 'Import Memories',
     description: 'Bulk import knowledge items from external sources (AI conversation logs, meeting notes, etc.). Creates knowledge:true tasks for each item.',
     inputSchema: {
-      boardId: z.string().describe('The board ID to import into'),
+      itemId: z.string().describe('The item ID to import into'),
       columnId: z.string().describe('The column ID to add items to'),
       items: z.array(z.object({
         content: z.string().describe('Knowledge item title'),
@@ -789,7 +804,7 @@ export function registerTools(server: McpServer) {
       })).describe('Array of knowledge items to import'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Agent name to tag imports with'),
     },
-  }, async ({ boardId, columnId, items, agentName }) => {
+  }, async ({ itemId, columnId, items, agentName }) => {
     try {
       const results: Array<{ content: string; taskId: string }> = []
       const errors: string[] = []
@@ -800,17 +815,17 @@ export function registerTools(server: McpServer) {
           if (item.labels?.length) taskContent += ' ' + item.labels.map(l => `#${l}`).join(' ')
           if (agentName) taskContent += ` built-by:${agentName}`
 
-          const result = await api.addTask(boardId, columnId, taskContent)
+          const result = await api.addTask(itemId, columnId, taskContent)
 
           if (item.description && result?.taskId) {
-            await api.updateTask(boardId, result.taskId, {
+            await api.updateTask(itemId, result.taskId, {
               action: 'updateDescription',
               description: item.description,
             })
           }
 
           if (item.learnings && result?.taskId) {
-            await api.updateTask(boardId, result.taskId, {
+            await api.updateTask(itemId, result.taskId, {
               action: 'updateLearnings',
               learnings: item.learnings,
             })
@@ -837,18 +852,18 @@ export function registerTools(server: McpServer) {
     title: 'Archive Completed Tasks',
     description: 'Bulk archive completed tasks. Optionally filter by age (days since completion) or column.',
     inputSchema: {
-      boardId: z.string().describe('The board ID'),
+      itemId: z.string().describe('The item ID'),
       olderThanDays: z.number().optional().describe('Only archive tasks completed more than N days ago'),
       columnId: z.string().optional().describe('Only archive tasks in this column'),
     },
-  }, async ({ boardId, olderThanDays, columnId }) => {
+  }, async ({ itemId, olderThanDays, columnId }) => {
     try {
-      const board = await api.getFile(boardId)
+      const item = await api.getFile(itemId)
       const now = new Date()
       let archived = 0
       const errors: string[] = []
 
-      for (const column of board.columns as ApiColumn[]) {
+      for (const column of item.columns as ApiColumn[]) {
         if (columnId && column.id !== columnId) continue
 
         for (const task of column.tasks) {
@@ -865,7 +880,7 @@ export function registerTools(server: McpServer) {
           }
 
           try {
-            await api.updateTask(boardId, task.id, {
+            await api.updateTask(itemId, task.id, {
               action: 'updateMetadata',
               displayContent: task.displayContent,
               metadata: { ...task.metadata, archived: true },

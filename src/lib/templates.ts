@@ -302,16 +302,16 @@ Ship the first production release.
 `,
   },
 
-  // ─── Note Templates ─────────────────────────────────────────────────
+  // ─── Page Templates ─────────────────────────────────────────────────
   {
-    id: 'note',
-    name: 'Note',
-    description: 'Freeform notes and documentation',
+    id: 'page',
+    name: 'Page',
+    description: 'Free-form document for knowledge, specs, and documentation',
     icon: 'file-text',
-    itemType: 'note',
+    itemType: 'page',
     markdown: `# Untitled
 
-Write anything here — this is your **freeform document**.
+Write anything here — this is your **free-form document**.
 
 ## Getting started
 
@@ -327,7 +327,7 @@ Use markdown to structure your content:
 
 1. Replace this content with your own
 2. Use the split editor to see raw markdown side-by-side
-3. Organize notes into projects from the sidebar
+3. Organize pages into projects from the sidebar
 `,
   },
 ]

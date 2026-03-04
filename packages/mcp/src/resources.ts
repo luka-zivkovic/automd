@@ -3,52 +3,52 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { api } from './api-client.js'
 
 export function registerResources(server: McpServer) {
-  // All boards summary
-  server.registerResource('boards', 'automd://boards', {
-    description: 'List of all AutoMD boards',
+  // All items summary
+  server.registerResource('items', 'automd://items', {
+    description: 'List of all AutoMD items (boards, checklists, pages)',
     mimeType: 'application/json',
   }, async () => {
-    const boards = await api.listFiles()
+    const items = await api.listFiles()
     return {
       contents: [
         {
-          uri: 'automd://boards',
+          uri: 'automd://items',
           mimeType: 'application/json',
-          text: JSON.stringify(boards, null, 2),
+          text: JSON.stringify(items, null, 2),
         },
       ],
     }
   })
 
-  // Single board by ID
-  server.registerResource('board', new ResourceTemplate('automd://boards/{boardId}', { list: undefined }), {
-    description: 'A single AutoMD board with columns and tasks',
+  // Single item by ID
+  server.registerResource('item', new ResourceTemplate('automd://items/{itemId}', { list: undefined }), {
+    description: 'A single AutoMD item (board, checklist, or page) with columns and tasks',
     mimeType: 'application/json',
-  }, async (uri, { boardId }) => {
-    const board = await api.getFile(boardId as string)
+  }, async (uri, { itemId }) => {
+    const item = await api.getFile(itemId as string)
     return {
       contents: [
         {
           uri: uri.href,
           mimeType: 'application/json',
-          text: JSON.stringify(board, null, 2),
+          text: JSON.stringify(item, null, 2),
         },
       ],
     }
   })
 
-  // Board markdown
-  server.registerResource('board-markdown', new ResourceTemplate('automd://boards/{boardId}/markdown', { list: undefined }), {
-    description: 'Raw markdown content of a board',
+  // Item markdown
+  server.registerResource('item-markdown', new ResourceTemplate('automd://items/{itemId}/markdown', { list: undefined }), {
+    description: 'Raw markdown content of an item',
     mimeType: 'text/markdown',
-  }, async (uri, { boardId }) => {
-    const board = await api.getFile(boardId as string)
+  }, async (uri, { itemId }) => {
+    const item = await api.getFile(itemId as string)
     return {
       contents: [
         {
           uri: uri.href,
           mimeType: 'text/markdown',
-          text: board.markdown,
+          text: item.markdown,
         },
       ],
     }

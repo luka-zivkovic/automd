@@ -6,10 +6,10 @@ export function registerOperationsPrompts(server: McpServer) {
   server.registerPrompt('triage_tasks', {
     description: 'Review uncategorized tasks and suggest columns/priorities',
     argsSchema: {
-      boardId: z.string().describe('The board ID to triage'),
+      itemId: z.string().describe('The item ID to triage'),
     },
-  }, async ({ boardId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId }) => {
+    const board = await api.getFile(itemId)
     const boardJson = JSON.stringify(board, null, 2)
 
     return {
@@ -38,10 +38,10 @@ For each suggestion, explain your reasoning and provide the specific tool calls 
   server.registerPrompt('daily_standup', {
     description: 'Summarize progress: what\'s done, in progress, blocked',
     argsSchema: {
-      boardId: z.string().describe('The board ID to summarize'),
+      itemId: z.string().describe('The item ID to summarize'),
     },
-  }, async ({ boardId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId }) => {
+    const board = await api.getFile(itemId)
     const boardJson = JSON.stringify(board, null, 2)
 
     return {
@@ -69,10 +69,10 @@ Format the summary in a way that would be useful for a quick team sync.`,
   server.registerPrompt('retrospective', {
     description: 'Run a retrospective on completed work and extract learnings',
     argsSchema: {
-      boardId: z.string().describe('The board ID to retrospect on'),
+      itemId: z.string().describe('The item ID to retrospect on'),
     },
-  }, async ({ boardId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId }) => {
+    const board = await api.getFile(itemId)
     const boardJson = JSON.stringify(board, null, 2)
 
     return {
@@ -100,10 +100,10 @@ For each learning worth capturing, provide add_knowledge or add_learning tool ca
   server.registerPrompt('board_cleanup', {
     description: 'Clean up stale tasks, duplicates, and organizational issues',
     argsSchema: {
-      boardId: z.string().describe('The board ID to clean up'),
+      itemId: z.string().describe('The item ID to clean up'),
     },
-  }, async ({ boardId }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId }) => {
+    const board = await api.getFile(itemId)
     const boardJson = JSON.stringify(board, null, 2)
 
     return {
@@ -132,11 +132,11 @@ Provide the specific tool calls to implement each cleanup action.`,
   server.registerPrompt('handoff_summary', {
     description: 'Generate a handoff summary for transitioning work between people or AI agents',
     argsSchema: {
-      boardId: z.string().describe('The board ID to summarize'),
+      itemId: z.string().describe('The item ID to summarize'),
       context: z.string().optional().describe('What the handoff is for (e.g. "new team member", "agent sync")'),
     },
-  }, async ({ boardId, context }) => {
-    const board = await api.getFile(boardId)
+  }, async ({ itemId, context }) => {
+    const board = await api.getFile(itemId)
     const boardJson = JSON.stringify(board, null, 2)
 
     return {

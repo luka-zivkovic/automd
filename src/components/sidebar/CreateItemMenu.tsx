@@ -65,9 +65,9 @@ export function CreateItemMenu({ projectId, onFileCreated }: CreateItemMenuProps
     onFileCreated?.()
   }, [createFile, createAndAssign, projectId, onFileCreated])
 
-  const handleNote = useCallback(() => {
+  const handlePage = useCallback(() => {
     setMenuOpen(false)
-    const id = createFile('Untitled Note', `# Notes\n`, projectId ?? null, 'note')
+    const id = createFile('Untitled Page', `# Untitled\n`, projectId ?? null, 'page')
     createAndAssign(id)
     onFileCreated?.()
   }, [createFile, createAndAssign, projectId, onFileCreated])
@@ -110,10 +110,10 @@ export function CreateItemMenu({ projectId, onFileCreated }: CreateItemMenuProps
             </button>
             <button
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent group"
-              onClick={handleNote}
+              onClick={handlePage}
             >
               <FileText className="size-3.5 text-amber-500" />
-              <span className="text-sm font-medium">Note</span>
+              <span className="text-sm font-medium">Page</span>
             </button>
           </div>
         </div>
