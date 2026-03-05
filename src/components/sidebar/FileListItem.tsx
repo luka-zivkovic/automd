@@ -6,14 +6,14 @@ import { useUiStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
 import { GripVertical, MoreHorizontal, Pencil, Trash2, LayoutGrid, CheckSquare, FileText, Brain } from 'lucide-react'
 import type { BoardFile } from '@/lib/markdown/types'
+import { formatRelativeDate } from '@/lib/format-relative-date'
 
-const ITEM_TYPE_ICON = {
+const ITEM_TYPE_ICON: Record<string, typeof LayoutGrid> = {
   board: LayoutGrid,
   checklist: CheckSquare,
   page: FileText,
   knowledge: Brain,
-} as const
-import { formatRelativeDate } from '@/lib/format-relative-date'
+}
 
 interface FileListItemProps {
   file: BoardFile
@@ -75,8 +75,8 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
     if (!isRenaming) {
       setActiveFile(file.id)
       const view = useUiStore.getState().activeView
-      if (file.itemType === 'page') {
-        // Pages always open in document view
+      if (file.itemType === 'page' || file.itemType === 'knowledge') {
+        // Pages/knowledge always open in document view
         if (view !== 'document') {
           useUiStore.getState().setActiveView('document')
         }
@@ -173,6 +173,7 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
             <div className="text-sm font-medium truncate flex items-center gap-1.5">
               {file.itemType && file.itemType !== 'board' && (() => {
                 const Icon = ITEM_TYPE_ICON[file.itemType]
+                if (!Icon) return null
                 return <Icon className="size-3 shrink-0 text-muted-foreground" />
               })()}
               {file.name}
