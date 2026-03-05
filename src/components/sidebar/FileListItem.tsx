@@ -4,13 +4,14 @@ import { CSS } from '@dnd-kit/utilities'
 import { useFilesStore } from '@/store/files-store'
 import { useUiStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
-import { GripVertical, MoreHorizontal, Pencil, Trash2, LayoutGrid, CheckSquare, FileText } from 'lucide-react'
+import { GripVertical, MoreHorizontal, Pencil, Trash2, LayoutGrid, CheckSquare, FileText, Brain } from 'lucide-react'
 import type { BoardFile } from '@/lib/markdown/types'
 
 const ITEM_TYPE_ICON = {
   board: LayoutGrid,
   checklist: CheckSquare,
   page: FileText,
+  knowledge: Brain,
 } as const
 import { formatRelativeDate } from '@/lib/format-relative-date'
 

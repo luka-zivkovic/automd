@@ -3,7 +3,7 @@ import { useFilesStore } from '@/store/files-store'
 import { parseMarkdown } from '@/lib/markdown/parser'
 import { annotateIds, createIdCache } from '@/lib/markdown/id-annotator'
 import { extractTasksAndColumns } from '@/lib/markdown/task-extractor'
-import { ScrollArea } from '@/components/ui/scroll-area'
+
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -198,7 +198,7 @@ export function MemoryView() {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto min-h-0">
         <div className="p-6 flex flex-col gap-3">
           {filtered.length === 0 && (
             <div className="text-center py-12">
@@ -263,7 +263,7 @@ export function MemoryView() {
             </Card>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

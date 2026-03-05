@@ -13,12 +13,13 @@ export function registerSystemPrompts(server: McpServer) {
 
 ## Core Concepts
 
-AutoMD has three item types:
+AutoMD has four item types:
 - **Boards** — Kanban-style markdown files with columns (H1) and tasks (H2). Each has YAML frontmatter with metadata.
 - **Checklists** — Task lists using ## (H2) headings with [ ]/[x] checkbox prefixes. Great for simple to-do lists and tracking.
-- **Pages** — Free-form markdown documents for knowledge, specs, documentation, and reference material.
+- **Pages** — Free-form markdown documents for specs, documentation, and reference material.
+- **Knowledge Bases** — Structured collections of knowledge entries (## H2) without checkboxes or progress tracking. Ideal for decisions, patterns, and institutional memory.
 
-All three types support YAML frontmatter, descriptions, acceptance criteria, subtasks, and learnings.
+All four types support YAML frontmatter, descriptions, acceptance criteria, subtasks, and learnings.
 
 **Knowledge items** are tasks with \`knowledge:true\` — they store decisions, patterns, references, and institutional memory. They use the same task infrastructure but represent knowledge, not work to be done.
 
@@ -62,7 +63,7 @@ Description paragraph — background, context, the "why".
 - Use \`synthesize_topic\` to assemble context briefs about a topic
 
 ## Available Tools
-- Item management: list_items, get_item, create_item (supports board/checklist/page types), delete_item, rename_item
+- Item management: list_items, get_item, create_item (supports board/checklist/page/knowledge types), delete_item, rename_item
 - Task management: add_task, update_task, toggle_task, move_task, delete_task
 - Metadata: update_task_metadata, update_acceptance_criteria, update_learnings
 - Knowledge: add_knowledge, update_knowledge, find_knowledge, synthesize_topic, import_memories

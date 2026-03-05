@@ -47,7 +47,6 @@ COPY --from=build /app/packages/server/dist packages/server/dist
 COPY --from=build /app/dist client
 
 EXPOSE 4800
-VOLUME ["/data"]
 ENV AUTOMD_STORAGE_DIR=/data
 ENV AUTOMD_PORT=4800
 

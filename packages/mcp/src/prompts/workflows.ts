@@ -31,7 +31,7 @@ Please:
 3. Identify any dependencies between subtasks
 4. Suggest which subtasks could be parallelized
 
-Provide the specific add_subtask tool calls to create each subtask.`,
+Subtasks are GFM checkboxes (\`- [ ] text\`) inside the parent task's content. Use update_task to add them to the parent task's body, or use add_task to create standalone tasks.`,
         },
       }],
     }
