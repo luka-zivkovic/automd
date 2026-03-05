@@ -117,6 +117,7 @@ const ITEM_TYPE_ICON: Record<string, LucideIcon> = {
   board: LayoutGrid,
   checklist: CheckSquare,
   page: FileText,
+  knowledge: Brain,
 }
 
 function BoardCard({ board }: { board: BoardSummary }) {
@@ -293,6 +294,7 @@ export function DashboardView() {
     const boardTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'board')
     const checklistTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'checklist')
     const pageTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'page')
+    const knowledgeTemplates = BOARD_TEMPLATES.filter((t) => t.itemType === 'knowledge')
 
     return (
       <div className="h-full flex flex-col">
@@ -398,6 +400,7 @@ export function DashboardView() {
                   { label: 'Boards', items: boardTemplates },
                   { label: 'Checklists', items: checklistTemplates },
                   { label: 'Pages', items: pageTemplates },
+                  { label: 'Knowledge Bases', items: knowledgeTemplates },
                 ].map(({ label, items }) =>
                   items.length > 0 && (
                     <div key={label}>

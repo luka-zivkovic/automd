@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
 import { createApp } from './app.js'
 import { setupWebSocket } from './ws.js'
-import { getStoragePath } from './storage.js'
+import { getStoragePath, getStorageSummary } from './storage.js'
 import { startUpdateChecker } from './update-check.js'
 import { isSetupComplete, isAuthDisabled } from './auth-storage.js'
 import { initS3Sync, hydrateFromS3, isS3SyncEnabled } from './s3-sync.js'
@@ -38,8 +38,12 @@ async function main() {
   setupWebSocket(server)
 
   server.listen(PORT, () => {
+    const summary = getStorageSummary()
     console.log(`[automd-server] Running on http://localhost:${PORT}`)
-    console.log(`[automd-server] Storage: ${getStoragePath()}`)
+    console.log(`[automd-server] Storage: ${getStoragePath()} (${summary.items} items, ${summary.projects} projects)`)
+    if (summary.items === 0) {
+      console.warn('[automd-server] \u26a0 Storage is empty \u2014 if you expected data, check your volume mounts')
+    }
     console.log(`[automd-server] WebSocket: ws://localhost:${PORT}/ws`)
     console.log(`[automd-server] S3 sync: ${isS3SyncEnabled() ? 'enabled' : 'disabled'}`)
 

@@ -53,9 +53,9 @@ export function Header() {
   const totalCount = tasks.length
   const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
-  // Show board view toggle only when a non-page file is selected and we're in a file view
-  const isPage = activeFile?.itemType === 'page'
-  const showViewToggle = activeFile && !isPage && activeView !== 'memory' && activeView !== 'prompts' && activeView !== 'dashboard' && activeView !== 'document'
+  // Show board view toggle only when a non-page/non-knowledge file is selected and we're in a file view
+  const hideProgress = activeFile?.itemType === 'page' || activeFile?.itemType === 'knowledge'
+  const showViewToggle = activeFile && !hideProgress && activeView !== 'memory' && activeView !== 'prompts' && activeView !== 'dashboard' && activeView !== 'document'
 
   return (
     <header className="shrink-0 relative z-10">
@@ -112,7 +112,7 @@ export function Header() {
             </>
           )}
 
-          {totalCount > 0 && !isPage && (
+          {totalCount > 0 && !hideProgress && (
             <div className="flex items-center gap-2.5">
               <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
                 <div

@@ -1,7 +1,7 @@
 {
   "name": "automd",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Markdown-native task management for AI-powered workflows",
   "homepage": "https://github.com/luka-zivkovic/automd",

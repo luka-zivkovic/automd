@@ -330,4 +330,29 @@ Use markdown to structure your content:
 3. Organize pages into projects from the sidebar
 `,
   },
+
+  // ─── Knowledge Templates ──────────────────────────────────────────────
+  {
+    id: 'knowledge',
+    name: 'Knowledge Base',
+    description: 'Structured knowledge entries for decisions, patterns, and reference material',
+    icon: 'brain',
+    itemType: 'knowledge',
+    markdown: `---
+board: Knowledge Base
+description: Decisions, patterns, and reference material
+tags: knowledge
+---
+
+# Decisions
+
+## Use parameterized queries for all SQL knowledge:true #security #database
+
+Prevents SQL injection. All database access must use parameterized queries — no string concatenation.
+
+## Next steps
+
+Add entries with \`## Title\` headings. Use \`#tags\` for categorization and \`knowledge:true\` for AI discoverability.
+`,
+  },
 ]

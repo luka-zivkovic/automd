@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useFilesStore } from '@/store/files-store'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Plus, LayoutGrid, CheckSquare, FileText } from 'lucide-react'
+import { Plus, LayoutGrid, CheckSquare, FileText, Brain } from 'lucide-react'
 import { TemplatePicker } from './TemplatePicker'
 import type { BoardTemplate } from '@/lib/templates'
 
@@ -72,6 +72,13 @@ export function CreateItemMenu({ projectId, onFileCreated }: CreateItemMenuProps
     onFileCreated?.()
   }, [createFile, createAndAssign, projectId, onFileCreated])
 
+  const handleKnowledge = useCallback(() => {
+    setMenuOpen(false)
+    const id = createFile('Untitled Knowledge Base', `# Knowledge\n`, projectId ?? null, 'knowledge')
+    createAndAssign(id)
+    onFileCreated?.()
+  }, [createFile, createAndAssign, projectId, onFileCreated])
+
   return (
     <div className="relative">
       <Tooltip>
@@ -114,6 +121,13 @@ export function CreateItemMenu({ projectId, onFileCreated }: CreateItemMenuProps
             >
               <FileText className="size-3.5 text-amber-500" />
               <span className="text-sm font-medium">Page</span>
+            </button>
+            <button
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent group"
+              onClick={handleKnowledge}
+            >
+              <Brain className="size-3.5 text-purple-500" />
+              <span className="text-sm font-medium">Knowledge Base</span>
             </button>
           </div>
         </div>

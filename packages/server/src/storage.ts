@@ -422,3 +422,8 @@ export function moveFileToProject(
 export function getStoragePath(): string {
   return getAutomdDir()
 }
+
+export function getStorageSummary(): { items: number; projects: number } {
+  const manifest = readManifest()
+  return { items: manifest.files.length, projects: manifest.projects.length }
+}

@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface TaskGroupProps {
   column: Column
+  isKnowledge?: boolean
 }
 
 function countAllTasks(column: Column): { completed: number; total: number } {
@@ -25,7 +26,7 @@ function countAllTasks(column: Column): { completed: number; total: number } {
   return { completed, total }
 }
 
-export function TaskGroup({ column }: TaskGroupProps) {
+export function TaskGroup({ column, isKnowledge }: TaskGroupProps) {
   const [collapsed, setCollapsed] = useState(false)
   const { completed, total } = countAllTasks(column)
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
@@ -47,17 +48,19 @@ export function TaskGroup({ column }: TaskGroupProps) {
             </div>
             <h3 className="font-display text-lg text-foreground italic">{column.title}</h3>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="w-16 h-1 bg-secondary rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all duration-500"
-                style={{ width: `${percent}%` }}
-              />
+          {!isKnowledge && (
+            <div className="flex items-center gap-3">
+              <div className="w-16 h-1 bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-500"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <span className="text-xs tabular-nums font-medium text-muted-foreground min-w-[3ch] text-right">
+                {completed}/{total}
+              </span>
             </div>
-            <span className="text-xs tabular-nums font-medium text-muted-foreground min-w-[3ch] text-right">
-              {completed}/{total}
-            </span>
-          </div>
+          )}
         </div>
       </CardHeader>
 
@@ -65,7 +68,7 @@ export function TaskGroup({ column }: TaskGroupProps) {
         <CardContent className="pt-0">
           <div className="space-y-0.5">
             {column.tasks.map((task) => (
-              <TaskItem key={task.id} task={task} />
+              <TaskItem key={task.id} task={task} isKnowledge={isKnowledge} />
             ))}
           </div>
           <RichTaskInput columnId={column.id} />

@@ -91,7 +91,7 @@ Analyze completed tasks and the board state to provide:
 3. **Action Items** — Concrete improvements for next iteration
 4. **Learnings to Capture** — Key decisions and patterns worth preserving as knowledge items
 
-For each learning worth capturing, provide add_knowledge or add_learning tool calls so they're preserved for future reference.`,
+For each learning worth capturing, provide add_knowledge tool calls for new knowledge items, or update_learnings tool calls to attach learnings to existing tasks.`,
         },
       }],
     }

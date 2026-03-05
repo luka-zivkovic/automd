@@ -45,7 +45,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('list_items', {
     title: 'List Items',
-    description: 'List all items (boards, checklists, and pages) with their task counts',
+    description: 'List all items (boards, checklists, pages, and knowledge bases) with their task counts. Returns array of {id, name, itemType, projectId, taskCount}.',
   }, async () => {
     try {
       const items = await api.listFiles()
@@ -57,8 +57,8 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('get_item', {
     title: 'Get Item',
-    description: 'Get an item (board, checklist, or page) with its columns and tasks',
-    inputSchema: { itemId: z.string().describe('The item ID') },
+    description: 'Get an item (board, checklist, page, or knowledge base) with its columns and tasks',
+    inputSchema: { itemId: z.string().describe('The item ID (obtain from list_items)') },
   }, async ({ itemId }) => {
     try {
       const item = await api.getFile(itemId)
@@ -83,11 +83,11 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('create_item', {
     title: 'Create Item',
-    description: 'Create a new board, checklist, or page. Boards use # (H1) for columns and ## (H2) for tasks. Checklists use ## (H2) with [ ]/[x] prefixes. Pages are free-form markdown for knowledge, specs, and documentation. All support YAML frontmatter, plain paragraphs (description), blockquotes (>) for acceptance criteria, and GFM checkboxes for subtasks.',
+    description: 'Create a new board, checklist, page, or knowledge base. Boards use # (H1) for columns and ## (H2) for tasks. Checklists use ## (H2) with [ ]/[x] prefixes. Pages are free-form markdown. Knowledge bases are structured collections of entries (## H2) without checkboxes or progress — ideal for decisions, patterns, and reference material. All support YAML frontmatter, descriptions, blockquotes (>) for acceptance criteria, and GFM checkboxes for subtasks.',
     inputSchema: {
       name: z.string().describe('Name for the new item'),
-      itemType: z.enum(['board', 'checklist', 'page']).optional().describe('Type of item to create: board (kanban columns), checklist (task list with checkboxes), or page (free-form markdown for knowledge and documentation). Defaults to board'),
-      markdown: z.string().optional().describe('Initial markdown content. Start with YAML frontmatter (board:, description:). Use # for columns, ## for tasks. Paragraphs = description, blockquotes (>) = acceptance criteria, checkboxes = subtasks'),
+      itemType: z.enum(['board', 'checklist', 'page', 'knowledge']).optional().describe('Type of item to create: board (kanban columns), checklist (task list with checkboxes), page (free-form markdown), or knowledge (structured entries without checkboxes/progress). Defaults to board'),
+      markdown: z.string().optional().describe('Initial markdown content. Omit for an empty item. For boards: use # for columns, ## for tasks. For checklists: ## with [ ] prefix. For pages/knowledge: free-form markdown. All types support YAML frontmatter (board:, description:, vocabulary:).'),
       projectId: z.string().optional().describe('Project ID to add the item to (optional)'),
     },
   }, async ({ name, itemType, markdown, projectId }) => {
@@ -134,10 +134,10 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('add_task', {
     title: 'Add Task',
-    description: 'Add a new task (H2 heading) to a column. Content supports inline metadata like @user #label priority:high due:2025-03-20 est:4h',
+    description: 'Add a new task (## H2 heading) to a column. Content supports inline metadata: @user #label priority:high|medium|low due:YYYY-MM-DD est:4h knowledge:true. Do not include built-by: manually — use the agentName parameter.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
-      columnId: z.string().describe('The column/heading ID to add the task to'),
+      columnId: z.string().describe('The column ID (found in get_item response columns[].id)'),
       content: z.string().describe('Task content with optional inline metadata'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
@@ -153,10 +153,10 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('update_task', {
     title: 'Update Task',
-    description: 'Update a task\'s content',
+    description: 'Update a task\'s title/content text only. For metadata use update_task_metadata, for completion use toggle_task, for position use move_task, for AC use update_acceptance_criteria, for learnings use update_learnings.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
-      taskId: z.string().describe('The task ID'),
+      taskId: z.string().describe('The task ID (found in get_item response columns[].tasks[].id)'),
       content: z.string().optional().describe('New task content'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Name of the agent making this change (tagged as built-by)'),
     },
@@ -178,7 +178,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('toggle_task', {
     title: 'Toggle Task',
-    description: 'Toggle a task between checked and unchecked',
+    description: 'Toggle a task between checked [ ] and unchecked [x]. Only applies to tasks with checkbox prefixes. Sets completedAt on check, clears on uncheck.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
@@ -199,7 +199,7 @@ export function registerTools(server: McpServer) {
       itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
       targetColumnId: z.string().describe('Target column ID'),
-      targetIndex: z.number().describe('Position in the target column (0-based)'),
+      targetIndex: z.number().describe('Position in target column (0-based). Use 0 to place at top. To append, use the column task count from get_item.'),
     },
   }, async ({ itemId, taskId, targetColumnId, targetIndex }) => {
     try {
@@ -234,7 +234,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('add_column', {
     title: 'Add Column',
-    description: 'Add a new column (H1 heading) to an item',
+    description: 'Add a new column (# H1 heading) to a board or checklist. Columns group tasks into workflow stages like "To Do", "In Progress", "Done".',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       title: z.string().describe('Column title'),
@@ -382,6 +382,8 @@ export function registerTools(server: McpServer) {
         targetIndex: z.number().optional().describe('Target index (for move)'),
         displayContent: z.string().optional().describe('Display content (for updateMetadata)'),
         metadata: z.record(z.string(), z.unknown()).optional().describe('Metadata fields (for updateMetadata)'),
+        acceptanceCriteria: z.string().nullable().optional().describe('Acceptance criteria text (for updateAcceptanceCriteria). Pass null to remove.'),
+        learnings: z.string().nullable().optional().describe('Learnings text (for updateLearnings). Pass null to remove.'),
       })).describe('Array of task updates to apply'),
     },
   }, async ({ itemId, agentName, updates }) => {
@@ -479,7 +481,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('search_context', {
     title: 'Search Context',
-    description: 'Search for institutional knowledge across all items. Searches task descriptions, acceptance criteria, and learnings — not just titles. Use this to find relevant context before starting work on a task (e.g. "what do we know about auth?" or "what was learned about pricing?").',
+    description: 'Search for contextual detail (descriptions, acceptance criteria, learnings) across all items. Returns any task with rich content — broader than find_knowledge which only returns knowledge:true items. Use this for finding implementation details, past decisions, and context before starting work.',
     inputSchema: {
       query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content'),
       label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
@@ -562,7 +564,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('list_projects', {
     title: 'List Projects',
-    description: 'List all projects',
+    description: 'List all projects. Returns array of {id, name, color}. Use project id as projectId in create_item or get_project_items.',
   }, async () => {
     try {
       const projects = await api.listProjects()
@@ -704,7 +706,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('find_knowledge', {
     title: 'Find Knowledge',
-    description: 'Search for knowledge items across all items. Returns tasks with knowledge:true OR tasks that have learnings. Use this to find institutional memory, past decisions, and patterns.',
+    description: 'Search specifically for curated knowledge items (knowledge:true) and tasks with captured learnings. Use for institutional decisions, patterns, and reference. For broader task history including descriptions, use search_context instead.',
     inputSchema: {
       query: z.string().optional().describe('Text to search for in knowledge items'),
       label: z.string().optional().describe('Filter by label (without #)'),
@@ -779,7 +781,7 @@ export function registerTools(server: McpServer) {
     description: 'Gather all knowledge about a topic and return a structured summary. This collects and organizes existing knowledge items — it does NOT generate AI content. Returns a paste-ready context brief.',
     inputSchema: {
       topic: z.string().describe('Topic to synthesize knowledge about (e.g. "authentication", "pricing", "deployment")'),
-      labels: z.string().optional().describe('Comma-separated labels to filter by (e.g. "backend,security")'),
+      labels: z.string().optional().describe('Comma-separated labels to filter by (e.g. "backend,security"). Unlike label on other tools which takes a single value, this accepts multiple comma-separated.'),
     },
   }, async ({ topic, labels }) => {
     try {

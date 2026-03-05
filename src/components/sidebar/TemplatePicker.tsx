@@ -37,7 +37,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
 interface TemplatePickerProps {
   onSelect: (template: BoardTemplate) => void
   onClose: () => void
-  filterItemType?: 'board' | 'checklist' | 'page'
+  filterItemType?: 'board' | 'checklist' | 'page' | 'knowledge'
 }
 
 export function TemplatePicker({ onSelect, onClose, filterItemType }: TemplatePickerProps) {
@@ -53,6 +53,7 @@ export function TemplatePicker({ onSelect, onClose, filterItemType }: TemplatePi
   const boardTemplates = useMemo(() => templates.filter((t) => t.itemType === 'board'), [templates])
   const checklistTemplates = useMemo(() => templates.filter((t) => t.itemType === 'checklist'), [templates])
   const pageTemplates = useMemo(() => templates.filter((t) => t.itemType === 'page'), [templates])
+  const knowledgeTemplates = useMemo(() => templates.filter((t) => t.itemType === 'knowledge'), [templates])
 
   // Close on Escape
   useEffect(() => {
@@ -129,6 +130,7 @@ export function TemplatePicker({ onSelect, onClose, filterItemType }: TemplatePi
         {renderGroup('Boards', boardTemplates)}
         {renderGroup('Checklists', checklistTemplates)}
         {renderGroup('Pages', pageTemplates)}
+        {renderGroup('Knowledge Bases', knowledgeTemplates)}
       </div>
     </div>
   )

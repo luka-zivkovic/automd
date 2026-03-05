@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useDocumentStore } from '@/store/document-store'
 import { useUiStore } from '@/store/ui-store'
+import { useFilesStore } from '@/store/files-store'
 import { useFilteredColumns } from '@/hooks/useFilteredColumns'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,9 @@ function SplitEditorToggle() {
 export function ChecklistView() {
   const showSplitEditor = useUiStore((s) => s.showSplitEditor)
   const columns = useDocumentStore((s) => s.columns)
+  const files = useFilesStore((s) => s.files)
+  const activeFileId = useFilesStore((s) => s.activeFileId)
+  const isKnowledge = files.find((f) => f.id === activeFileId)?.itemType === 'knowledge'
   const [showArchived, setShowArchived] = useState(false)
 
   const archivedCount = useMemo(
@@ -85,23 +89,25 @@ export function ChecklistView() {
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="max-w-2xl mx-auto px-6 py-8">
             {/* Overall progress */}
-            <div className="mb-8">
-              <div className="flex items-end justify-between mb-4">
-                <div>
-                  <h2 className="font-display text-3xl text-foreground italic">Progress</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {totalCompleted} of {totalTasks} tasks complete
-                  </p>
+            {!isKnowledge && (
+              <div className="mb-8">
+                <div className="flex items-end justify-between mb-4">
+                  <div>
+                    <h2 className="font-display text-3xl text-foreground italic">Progress</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {totalCompleted} of {totalTasks} tasks complete
+                    </p>
+                  </div>
+                  <span className="text-3xl font-light tabular-nums text-gradient">
+                    {overallPercent}%
+                  </span>
                 </div>
-                <span className="text-3xl font-light tabular-nums text-gradient">
-                  {overallPercent}%
-                </span>
+                <Progress value={overallPercent} className="h-2" />
               </div>
-              <Progress value={overallPercent} className="h-2" />
-            </div>
+            )}
 
             {/* Archived toggle */}
-            {archivedCount > 0 && (
+            {!isKnowledge && archivedCount > 0 && (
               <div className="mb-4">
                 <Button
                   variant={showArchived ? 'secondary' : 'ghost'}
@@ -118,7 +124,7 @@ export function ChecklistView() {
             {/* Task groups */}
             <div className="space-y-4 stagger-enter">
               {filteredColumns.map((col) => (
-                <TaskGroup key={col.id} column={col} />
+                <TaskGroup key={col.id} column={col} isKnowledge={isKnowledge} />
               ))}
             </div>
           </div>

@@ -20,7 +20,7 @@
 
 ## Features
 
-- **Three item types** — kanban boards, checklists, and free-form pages for docs/knowledge
+- **Four item types** — kanban boards, checklists, free-form pages, and knowledge bases
 - **Four views** — dashboard, rich markdown editor, checklist, and drag-and-drop kanban
 - **Plain markdown storage** — items are `.md` files, no proprietary database
 - **MCP server** — Claude Desktop and Claude Code can manage your boards directly
@@ -40,7 +40,9 @@ docker compose up -d
 open http://localhost:4800
 ```
 
-The default `docker-compose.yml` pulls from `ghcr.io/luka-zivkovic/automd:latest`. Data is persisted in a Docker volume.
+The default `docker-compose.yml` pulls from `ghcr.io/luka-zivkovic/automd:latest`. Data is persisted in a named Docker volume (`automd_data`).
+
+> **Hosting platforms (Coolify, Railway, etc.):** You must configure a persistent volume mounted at `/data`. Without an explicit volume, data lives inside the container and will be lost when the container is recreated during redeployment.
 
 <details>
 <summary>Build from source instead</summary>
