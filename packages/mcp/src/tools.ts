@@ -512,21 +512,25 @@ export function registerTools(server: McpServer) {
             for (const task of column.tasks) {
               if (completedOnly && !task.checked) continue
 
-              // Build searchable text from all fields
+              // Build searchable text from all fields (including frontmatter tags)
               const searchable = [
                 task.content,
                 task.description,
                 task.acceptanceCriteria,
                 task.learnings,
+                ...(item.meta?.tags ?? []),
               ].filter(Boolean).join(' ').toLowerCase()
 
               let match = true
               if (q && !searchable.includes(q)) match = false
               if (label) {
-                // Check task labels AND inline #tags in learnings
+                // Check task labels, inline #tags, AND frontmatter tags
                 const hasLabel = task.metadata.labels.includes(label)
                 const hasInlineLabelTag = searchable.includes(`#${label.toLowerCase()}`)
-                if (!hasLabel && !hasInlineLabelTag) match = false
+                const hasFrontmatterTag = item.meta?.tags?.some(
+                  (t: string) => t.toLowerCase() === label.toLowerCase()
+                )
+                if (!hasLabel && !hasInlineLabelTag && !hasFrontmatterTag) match = false
               }
 
               // Only include results that have some knowledge content
@@ -737,20 +741,24 @@ export function registerTools(server: McpServer) {
               const hasLearnings = !!task.learnings
               if (!isKnowledge && !hasLearnings) continue
 
-              // Apply text filter
+              // Apply text filter (including frontmatter tags)
               if (q) {
                 const searchable = [
                   task.content, task.description,
                   task.acceptanceCriteria, task.learnings,
+                  ...(item.meta?.tags ?? []),
                 ].filter(Boolean).join(' ').toLowerCase()
                 if (!searchable.includes(q)) continue
               }
 
-              // Apply label filter
+              // Apply label filter (including frontmatter tags)
               if (label) {
                 const hasLabel = task.metadata?.labels?.includes(label)
                 const hasInlineTag = task.learnings?.toLowerCase().includes(`#${label.toLowerCase()}`)
-                if (!hasLabel && !hasInlineTag) continue
+                const hasFrontmatterTag = item.meta?.tags?.some(
+                  (t: string) => t.toLowerCase() === label.toLowerCase()
+                )
+                if (!hasLabel && !hasInlineTag && !hasFrontmatterTag) continue
               }
 
               results.push({

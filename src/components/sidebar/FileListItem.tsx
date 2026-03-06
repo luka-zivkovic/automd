@@ -75,12 +75,15 @@ export function FileListItem({ file, isActive, isDragOverlay = false }: FileList
     if (!isRenaming) {
       setActiveFile(file.id)
       const view = useUiStore.getState().activeView
-      if (file.itemType === 'page' || file.itemType === 'knowledge') {
-        // Pages/knowledge always open in document view
+      if (file.itemType === 'page') {
         if (view !== 'document') {
           useUiStore.getState().setActiveView('document')
         }
-      } else if (view === 'document' || view === 'dashboard' || view === 'memory' || view === 'prompts') {
+      } else if (file.itemType === 'knowledge') {
+        if (view !== 'knowledge') {
+          useUiStore.getState().setActiveView('knowledge')
+        }
+      } else if (view === 'document' || view === 'knowledge' || view === 'dashboard' || view === 'memory' || view === 'prompts') {
         // Non-page files: switch away from non-board views
         useUiStore.getState().setActiveView('checklist')
       }
