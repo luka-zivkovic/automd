@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Plus, LayoutGrid, CheckSquare, FileText, Brain } from 'lucide-react'
 import { TemplatePicker } from './TemplatePicker'
-import type { BoardTemplate } from '@/lib/templates'
+import { BOARD_TEMPLATES, type BoardTemplate } from '@/lib/templates'
+
+const PAGE_TEMPLATE = BOARD_TEMPLATES.find((t) => t.id === 'page')!
+const KNOWLEDGE_TEMPLATE = BOARD_TEMPLATES.find((t) => t.id === 'knowledge')!
 
 interface CreateItemMenuProps {
   projectId?: string | null
@@ -67,14 +70,14 @@ export function CreateItemMenu({ projectId, onFileCreated }: CreateItemMenuProps
 
   const handlePage = useCallback(() => {
     setMenuOpen(false)
-    const id = createFile('Untitled Page', `# Untitled\n`, projectId ?? null, 'page')
+    const id = createFile('Untitled Page', PAGE_TEMPLATE.markdown, projectId ?? null, 'page')
     createAndAssign(id)
     onFileCreated?.()
   }, [createFile, createAndAssign, projectId, onFileCreated])
 
   const handleKnowledge = useCallback(() => {
     setMenuOpen(false)
-    const id = createFile('Untitled Knowledge Base', `# Knowledge\n`, projectId ?? null, 'knowledge')
+    const id = createFile('Untitled Knowledge Base', KNOWLEDGE_TEMPLATE.markdown, projectId ?? null, 'knowledge')
     createAndAssign(id)
     onFileCreated?.()
   }, [createFile, createAndAssign, projectId, onFileCreated])

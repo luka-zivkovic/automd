@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { BoardFile, ItemType, Project } from '@automd/shared'
-import { DEFAULT_MARKDOWN } from '@automd/shared'
+import { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
 import { getAutomdDir } from './config.js'
 import { syncFileToS3, deleteFileFromS3 } from './s3-sync.js'
@@ -188,8 +188,11 @@ export function createFile(
     const existingFilenames = manifest.files.map((f) => f.filename)
     const filename = uniqueFilename(name, existingFilenames)
     const now = Date.now()
-    const content = markdown ?? DEFAULT_MARKDOWN
     const resolvedItemType = itemType ?? 'board'
+    const defaultMarkdown = resolvedItemType === 'page' ? DEFAULT_PAGE_MARKDOWN
+      : resolvedItemType === 'knowledge' ? DEFAULT_KNOWLEDGE_MARKDOWN
+      : DEFAULT_MARKDOWN
+    const content = markdown ?? defaultMarkdown
 
     const mdPath = safeBoardPath(filename)
     ensureDirs()
