@@ -1,6 +1,6 @@
 {
   "name": "automd-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server for AutoMD — manage boards, checklists, and pages stored as markdown",
   "type": "module",
   "main": "./dist/index.js",
