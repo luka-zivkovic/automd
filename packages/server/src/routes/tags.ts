@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import * as storage from '../storage.js'
-import { getMergedTags } from '../tag-registry.js'
+import { getMergedTags, invalidateTagCache } from '../tag-registry.js'
 import { broadcast } from '../ws.js'
 import { withWriteLock } from '../write-lock.js'
 
@@ -27,6 +27,7 @@ tagsRouter.put('/', async (req, res, next) => {
 
   try {
     const updated = await withWriteLock(() => {
+      invalidateTagCache()
       return storage.setInstanceTags(tags)
     })
 

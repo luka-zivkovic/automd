@@ -39,10 +39,10 @@ contextRouter.get('/', (req, res, next) => {
 
       for (const task of flattenTasks(tasks)) {
         const matchesTopic = !topic || matchesText(task, topic) ||
-          boardTags.some((t: string) => t.toLowerCase().includes(topic))
+          boardTags.some(t => t.toLowerCase().includes(topic))
         const matchesLabels = labelFilter.length === 0 ||
           labelFilter.some(l => task.metadata.labels.some(tl => tl.toLowerCase() === l)) ||
-          labelFilter.some(l => boardTags.some((t: string) => t.toLowerCase() === l))
+          labelFilter.some(l => boardTags.some(t => t.toLowerCase() === l))
 
         if (!matchesTopic && !matchesLabels) continue
 

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { BoardFile, ItemType, Project } from '@automd/shared'
-import { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN } from '@automd/shared'
+import { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN, normalizeTag } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
 import { getAutomdDir } from './config.js'
 import { syncFileToS3, deleteFileFromS3 } from './s3-sync.js'
@@ -441,7 +441,7 @@ export function getInstanceTags(): string[] {
 
 export function setInstanceTags(tags: string[]): string[] {
   const manifest = readManifest()
-  const normalized = [...new Set(tags.map(t => t.trim().toLowerCase()).filter(Boolean))].sort()
+  const normalized = [...new Set(tags.map(normalizeTag).filter(Boolean))].sort()
   manifest.tags = normalized
   writeManifest(manifest)
   return normalized

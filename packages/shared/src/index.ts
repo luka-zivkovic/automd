@@ -54,6 +54,9 @@ export {
   moveColumn,
 } from './task-mutator.js'
 
+// Tag Utils
+export { normalizeTag } from './tag-utils.js'
+
 // Default Document
 export { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN } from './default-document.js'
 

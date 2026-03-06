@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { ChevronRight, MoreHorizontal, Pencil, Trash2, Tag, X, Plus } from 'lucide-react'
 import { getProjectColorClass } from '@/lib/utils/project-colors'
 import { apiFetch, HAS_SERVER } from '@/lib/api'
+import { normalizeTag } from '@automd/shared'
+import { toast } from 'sonner'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 
 interface ProjectSectionProps {
@@ -107,17 +109,21 @@ export function ProjectSection({ project, files, activeFileId }: ProjectSectionP
   }, [])
 
   const syncTagsToServer = useCallback((tags: string[]) => {
+    const previousTags = project.tags ?? []
     updateProjectTags(project.id, tags)
     if (HAS_SERVER) {
       apiFetch(`/projects/${project.id}`, {
         method: 'PUT',
         body: JSON.stringify({ tags }),
+      }).catch(() => {
+        updateProjectTags(project.id, previousTags)
+        toast.error('Failed to save project tags')
       })
     }
-  }, [project.id, updateProjectTags])
+  }, [project.id, project.tags, updateProjectTags])
 
   const handleAddTag = useCallback(() => {
-    const trimmed = newTagValue.trim().toLowerCase().replace(/\s+/g, '-')
+    const trimmed = normalizeTag(newTagValue)
     const currentTags = project.tags ?? []
     if (trimmed && !currentTags.includes(trimmed)) {
       syncTagsToServer([...currentTags, trimmed])

@@ -1,13 +1,25 @@
 import * as storage from './storage.js'
 import { parseBoard } from './board-cache.js'
 
-const INLINE_TAG_RE = /#([a-zA-Z0-9_-]+)/g
+/** Matches inline #tags in learnings text. Supports unicode letters/numbers. */
+const INLINE_TAG_RE = /#([\p{L}\p{N}_-]+)/gu
+
+/** Simple time-based cache for computeUsedTags results. */
+let tagCache: { key: string; tags: string[]; ts: number } | null = null
+const CACHE_TTL_MS = 5_000
 
 /**
  * Compute all tags actually used across boards.
  * Collects from: frontmatter tags, task metadata labels, inline #tags in learnings.
+ * Results are cached for 5 seconds to avoid redundant full scans.
  */
 export function computeUsedTags(projectId?: string): string[] {
+  const cacheKey = projectId ?? '__all__'
+  const now = Date.now()
+  if (tagCache && tagCache.key === cacheKey && now - tagCache.ts < CACHE_TTL_MS) {
+    return tagCache.tags
+  }
+
   const files = storage.listFiles()
   const tags = new Set<string>()
 
@@ -40,7 +52,14 @@ export function computeUsedTags(projectId?: string): string[] {
     }
   }
 
-  return [...tags].sort()
+  const result = [...tags].sort()
+  tagCache = { key: cacheKey, tags: result, ts: now }
+  return result
+}
+
+/** Invalidate the tag cache (call after writes that affect tags). */
+export function invalidateTagCache() {
+  tagCache = null
 }
 
 /**

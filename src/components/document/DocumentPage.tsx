@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from 'react'
 import { useDocumentStore } from '@/store/document-store'
 import { useFilesStore } from '@/store/files-store'
 import { useUiStore } from '@/store/ui-store'
-import { extractFrontmatter } from '@automd/shared'
+import { extractFrontmatter, normalizeTag } from '@automd/shared'
 import { renderMdast } from '@/lib/markdown/mdast-renderer'
 import { FilterBar } from '@/components/search/FilterBar'
 import { FileText, Code2, X, Plus, Tag } from 'lucide-react'
@@ -37,7 +37,7 @@ function TagBar() {
   }, [ast])
 
   function handleAdd() {
-    const trimmed = newTag.trim().toLowerCase().replace(/\s+/g, '-')
+    const trimmed = normalizeTag(newTag)
     if (trimmed && !tags.includes(trimmed)) {
       updateFrontmatterTags([...tags, trimmed])
     }

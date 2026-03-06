@@ -528,7 +528,7 @@ export function registerTools(server: McpServer) {
                 const hasLabel = task.metadata.labels.includes(label)
                 const hasInlineLabelTag = searchable.includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
-                  (t: string) => t.toLowerCase() === label.toLowerCase()
+                  t => t.toLowerCase() === label.toLowerCase()
                 )
                 if (!hasLabel && !hasInlineLabelTag && !hasFrontmatterTag) match = false
               }
@@ -773,7 +773,7 @@ export function registerTools(server: McpServer) {
                 const hasLabel = task.metadata?.labels?.includes(label)
                 const hasInlineTag = task.learnings?.toLowerCase().includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
-                  (t: string) => t.toLowerCase() === label.toLowerCase()
+                  t => t.toLowerCase() === label.toLowerCase()
                 )
                 if (!hasLabel && !hasInlineTag && !hasFrontmatterTag) continue
               }
