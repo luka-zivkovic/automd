@@ -55,7 +55,7 @@ export {
 } from './task-mutator.js'
 
 // Default Document
-export { DEFAULT_MARKDOWN } from './default-document.js'
+export { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN } from './default-document.js'
 
 // Prompt Catalog
 export type { PromptDefinition, TemplatePrompt, TemplatePromptPlaceholder } from './prompt-catalog.js'

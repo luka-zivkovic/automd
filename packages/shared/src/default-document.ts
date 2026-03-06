@@ -1,3 +1,41 @@
+export const DEFAULT_PAGE_MARKDOWN = `# Untitled
+
+Write anything here — this is your **free-form document**.
+
+## Getting started
+
+Use markdown to structure your content:
+
+- **Bold** and *italic* text for emphasis
+- Lists for organizing thoughts
+- Code blocks for technical notes
+
+> Blockquotes are great for highlighting key ideas or quotes.
+
+## Next steps
+
+1. Replace this content with your own
+2. Use the split editor to see raw markdown side-by-side
+3. Organize pages into projects from the sidebar
+`
+
+export const DEFAULT_KNOWLEDGE_MARKDOWN = `---
+board: Knowledge Base
+description: Decisions, patterns, and reference material
+tags: knowledge
+---
+
+# Decisions
+
+## Use parameterized queries for all SQL knowledge:true #security #database
+
+Prevents SQL injection. All database access must use parameterized queries — no string concatenation.
+
+## Next steps
+
+Add entries with \`## Title\` headings. Use \`#tags\` for categorization and \`knowledge:true\` for AI discoverability.
+`
+
 export const DEFAULT_MARKDOWN = `---
 board: Sprint Board
 description: Example board with tasks, descriptions, and acceptance criteria
