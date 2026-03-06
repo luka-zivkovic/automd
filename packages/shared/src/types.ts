@@ -80,4 +80,5 @@ export interface Project {
   fileIds: string[]
   createdAt: number
   markdown?: string
+  tags?: string[]
 }

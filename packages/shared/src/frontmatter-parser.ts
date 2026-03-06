@@ -31,7 +31,9 @@ export function extractFrontmatter(ast: Root): BoardMeta | null {
       project: data.project ?? undefined,
       projectId: data.projectId ?? undefined,
       description: data.description ?? undefined,
-      tags: Array.isArray(data.tags) ? data.tags : undefined,
+      tags: Array.isArray(data.tags) ? data.tags
+        : typeof data.tags === 'string' ? data.tags.split(/[,\s]+/).filter(Boolean)
+        : undefined,
       vocabulary,
     }
   } catch {

@@ -46,11 +46,11 @@ projectsRouter.put('/:id', async (req, res, next) => {
     return
   }
 
-  const { name, color, fileIds } = req.body
+  const { name, color, fileIds, tags } = req.body
 
   try {
     const project = await withWriteLock(() => {
-      return storage.updateProject(req.params.id, { name, color, fileIds })
+      return storage.updateProject(req.params.id, { name, color, fileIds, tags })
     })
 
     if (!project) {
