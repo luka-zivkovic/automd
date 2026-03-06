@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { BoardFile, ItemType, Project } from '@automd/shared'
-import { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN } from '@automd/shared'
+import { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN, normalizeTag } from '@automd/shared'
 import { isWithinDirectory } from './validation.js'
 import { getAutomdDir } from './config.js'
 import { syncFileToS3, deleteFileFromS3 } from './s3-sync.js'
@@ -30,6 +30,7 @@ interface Manifest {
     updatedAt: number
   }>
   projects: Project[]
+  tags?: string[]
 }
 
 function ensureDirs() {
@@ -348,7 +349,7 @@ export function createProject(
 
 export function updateProject(
   id: string,
-  updates: Partial<Pick<Project, 'name' | 'color' | 'fileIds'>>,
+  updates: Partial<Pick<Project, 'name' | 'color' | 'fileIds' | 'tags'>>,
 ): Project | null {
   try {
     const manifest = readManifest()
@@ -358,6 +359,7 @@ export function updateProject(
     if (updates.name !== undefined) project.name = updates.name
     if (updates.color !== undefined) project.color = updates.color
     if (updates.fileIds !== undefined) project.fileIds = updates.fileIds
+    if (updates.tags !== undefined) project.tags = updates.tags
 
     writeManifest(manifest)
     return project
@@ -429,4 +431,18 @@ export function getStoragePath(): string {
 export function getStorageSummary(): { items: number; projects: number } {
   const manifest = readManifest()
   return { items: manifest.files.length, projects: manifest.projects.length }
+}
+
+// ─── Instance Tags ──────────────────────────────────────────────────
+
+export function getInstanceTags(): string[] {
+  return readManifest().tags ?? []
+}
+
+export function setInstanceTags(tags: string[]): string[] {
+  const manifest = readManifest()
+  const normalized = [...new Set(tags.map(normalizeTag).filter(Boolean))].sort()
+  manifest.tags = normalized
+  writeManifest(manifest)
+  return normalized
 }

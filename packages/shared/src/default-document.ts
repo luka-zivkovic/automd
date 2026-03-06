@@ -22,7 +22,8 @@ Use markdown to structure your content:
 export const DEFAULT_KNOWLEDGE_MARKDOWN = `---
 board: Knowledge Base
 description: Decisions, patterns, and reference material
-tags: knowledge
+tags:
+  - knowledge
 ---
 
 # Decisions

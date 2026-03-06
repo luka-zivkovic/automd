@@ -168,6 +168,18 @@ export const api = {
   deleteProject: (id: string) =>
     request(`/api/projects/${id}`, { method: 'DELETE' }),
 
+  // Tags
+  getTags: (projectId?: string) => {
+    const query = new URLSearchParams()
+    if (projectId) query.set('projectId', projectId)
+    return request(`/api/tags?${query.toString()}`)
+  },
+  updateInstanceTags: (tags: string[]) =>
+    request('/api/tags', {
+      method: 'PUT',
+      body: JSON.stringify({ tags }),
+    }),
+
   // Health
   health: () => request('/api/health'),
 }

@@ -341,7 +341,8 @@ Use markdown to structure your content:
     markdown: `---
 board: Knowledge Base
 description: Decisions, patterns, and reference material
-tags: knowledge
+tags:
+  - knowledge
 ---
 
 # Decisions

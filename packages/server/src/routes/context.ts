@@ -34,12 +34,15 @@ contextRouter.get('/', (req, res, next) => {
 
     for (const file of files) {
       if (!file.markdown) continue
-      const { tasks } = parseBoard(file.markdown, file.id)
+      const { tasks, meta } = parseBoard(file.markdown, file.id)
+      const boardTags = meta?.tags ?? []
 
       for (const task of flattenTasks(tasks)) {
-        const matchesTopic = !topic || matchesText(task, topic)
+        const matchesTopic = !topic || matchesText(task, topic) ||
+          boardTags.some(t => t.toLowerCase().includes(topic))
         const matchesLabels = labelFilter.length === 0 ||
-          labelFilter.some(l => task.metadata.labels.some(tl => tl.toLowerCase() === l))
+          labelFilter.some(l => task.metadata.labels.some(tl => tl.toLowerCase() === l)) ||
+          labelFilter.some(l => boardTags.some(t => t.toLowerCase() === l))
 
         if (!matchesTopic && !matchesLabels) continue
 

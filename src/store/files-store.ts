@@ -19,6 +19,7 @@ interface FilesStore {
   createProject: (name: string, color: string) => string
   deleteProject: (projectId: string) => void
   renameProject: (projectId: string, name: string) => void
+  updateProjectTags: (projectId: string, tags: string[]) => void
   moveFileToProject: (fileId: string, projectId: string | null) => void
   reorderFiles: (fileIds: string[]) => void
   reorderProjects: (projectIds: string[]) => void
@@ -125,6 +126,15 @@ export const useFilesStore = create<FilesStore>()(
             const project = state.projects.find((p) => p.id === projectId)
             if (project) {
               project.name = name
+            }
+          })
+        },
+
+        updateProjectTags: (projectId: string, tags: string[]) => {
+          set((state) => {
+            const project = state.projects.find((p) => p.id === projectId)
+            if (project) {
+              project.tags = tags
             }
           })
         },

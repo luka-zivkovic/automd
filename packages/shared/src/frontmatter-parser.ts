@@ -31,7 +31,12 @@ export function extractFrontmatter(ast: Root): BoardMeta | null {
       project: data.project ?? undefined,
       projectId: data.projectId ?? undefined,
       description: data.description ?? undefined,
-      tags: Array.isArray(data.tags) ? data.tags : undefined,
+      // Tags can be a YAML array (`tags: [a, b]` or `tags:\n  - a`) or a
+      // comma/whitespace-separated string (`tags: a, b`). Use hyphens for
+      // multi-word tags (e.g. 'my-tag' not 'my tag') since spaces are delimiters.
+      tags: Array.isArray(data.tags) ? data.tags
+        : typeof data.tags === 'string' ? data.tags.split(/[,\s]+/).filter(Boolean)
+        : undefined,
       vocabulary,
     }
   } catch {

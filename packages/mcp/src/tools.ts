@@ -134,7 +134,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('add_task', {
     title: 'Add Task',
-    description: 'Add a new task (## H2 heading) to a column. Content supports inline metadata: @user #label priority:high|medium|low due:YYYY-MM-DD est:4h knowledge:true. Do not include built-by: manually — use the agentName parameter.',
+    description: 'Add a new task (## H2 heading) to a column. Content supports inline metadata: @user #label priority:high|medium|low due:YYYY-MM-DD est:4h knowledge:true. Do not include built-by: manually — use the agentName parameter. Call list_tags to discover existing labels before inventing new ones.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       columnId: z.string().describe('The column ID (found in get_item response columns[].id)'),
@@ -287,7 +287,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('update_task_metadata', {
     title: 'Update Task Metadata',
-    description: 'Update a task\'s metadata (priority, assignees, labels, due date, estimate) without rewriting its content',
+    description: 'Update a task\'s metadata (priority, assignees, labels, due date, estimate) without rewriting its content. Call list_tags to discover existing labels before adding new ones.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
@@ -426,7 +426,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('search_tasks', {
     title: 'Search Tasks',
-    description: 'Search for tasks across all items by text, assignee, label, or status',
+    description: 'Search for tasks across all items by text, assignee, label, or status. Use list_tags to discover valid label values.',
     inputSchema: {
       query: z.string().optional().describe('Text to search for in task content'),
       assignee: z.string().optional().describe('Filter by assignee (without @)'),
@@ -481,7 +481,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('search_context', {
     title: 'Search Context',
-    description: 'Search for contextual detail (descriptions, acceptance criteria, learnings) across all items. Returns any task with rich content — broader than find_knowledge which only returns knowledge:true items. Use this for finding implementation details, past decisions, and context before starting work.',
+    description: 'Search for contextual detail (descriptions, acceptance criteria, learnings) across all items. Returns any task with rich content — broader than find_knowledge which only returns knowledge:true items. Use this for finding implementation details, past decisions, and context before starting work. Use list_tags to discover valid label values.',
     inputSchema: {
       query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content'),
       label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
@@ -512,21 +512,25 @@ export function registerTools(server: McpServer) {
             for (const task of column.tasks) {
               if (completedOnly && !task.checked) continue
 
-              // Build searchable text from all fields
+              // Build searchable text from all fields (including frontmatter tags)
               const searchable = [
                 task.content,
                 task.description,
                 task.acceptanceCriteria,
                 task.learnings,
+                ...(item.meta?.tags ?? []),
               ].filter(Boolean).join(' ').toLowerCase()
 
               let match = true
               if (q && !searchable.includes(q)) match = false
               if (label) {
-                // Check task labels AND inline #tags in learnings
+                // Check task labels, inline #tags, AND frontmatter tags
                 const hasLabel = task.metadata.labels.includes(label)
                 const hasInlineLabelTag = searchable.includes(`#${label.toLowerCase()}`)
-                if (!hasLabel && !hasInlineLabelTag) match = false
+                const hasFrontmatterTag = item.meta?.tags?.some(
+                  t => t.toLowerCase() === label.toLowerCase()
+                )
+                if (!hasLabel && !hasInlineLabelTag && !hasFrontmatterTag) match = false
               }
 
               // Only include results that have some knowledge content
@@ -564,7 +568,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('list_projects', {
     title: 'List Projects',
-    description: 'List all projects. Returns array of {id, name, color}. Use project id as projectId in create_item or get_project_items.',
+    description: 'List all projects with their curated tags. Returns array of {id, name, color, tags}. Use project id as projectId in create_item, get_project_items, or list_tags.',
   }, async () => {
     try {
       const projects = await api.listProjects()
@@ -608,11 +612,28 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  // ─── Tag Registry ───────────────────────────────────────────────
+
+  server.registerTool('list_tags', {
+    title: 'List Tags',
+    description: 'Discover available tags/labels before searching or tagging content. Returns curated tags (defined by humans), project-specific tags, and tags already in use across items. ALWAYS call this before inventing new tags — reuse existing ones to keep the knowledge base consistent.',
+    inputSchema: {
+      projectId: z.string().optional().describe('Optional project ID to scope tags to a specific project'),
+    },
+  }, async ({ projectId }) => {
+    try {
+      const result = await api.getTags(projectId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   // ─── Knowledge Tools ──────────────────────────────────────────────
 
   server.registerTool('add_knowledge', {
     title: 'Add Knowledge',
-    description: 'Add a knowledge item. Knowledge items are tasks with knowledge:true — they store decisions, patterns, references, and institutional memory. They reuse the task infrastructure but skip the checkbox/completion workflow.',
+    description: 'Add a knowledge item. Knowledge items are tasks with knowledge:true — they store decisions, patterns, references, and institutional memory. They reuse the task infrastructure but skip the checkbox/completion workflow. Call list_tags first to reuse existing labels.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       columnId: z.string().describe('The column ID'),
@@ -706,7 +727,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('find_knowledge', {
     title: 'Find Knowledge',
-    description: 'Search specifically for curated knowledge items (knowledge:true) and tasks with captured learnings. Use for institutional decisions, patterns, and reference. For broader task history including descriptions, use search_context instead.',
+    description: 'Search specifically for curated knowledge items (knowledge:true) and tasks with captured learnings. Use for institutional decisions, patterns, and reference. For broader task history including descriptions, use search_context instead. Use list_tags to discover valid label values.',
     inputSchema: {
       query: z.string().optional().describe('Text to search for in knowledge items'),
       label: z.string().optional().describe('Filter by label (without #)'),
@@ -737,20 +758,24 @@ export function registerTools(server: McpServer) {
               const hasLearnings = !!task.learnings
               if (!isKnowledge && !hasLearnings) continue
 
-              // Apply text filter
+              // Apply text filter (including frontmatter tags)
               if (q) {
                 const searchable = [
                   task.content, task.description,
                   task.acceptanceCriteria, task.learnings,
+                  ...(item.meta?.tags ?? []),
                 ].filter(Boolean).join(' ').toLowerCase()
                 if (!searchable.includes(q)) continue
               }
 
-              // Apply label filter
+              // Apply label filter (including frontmatter tags)
               if (label) {
                 const hasLabel = task.metadata?.labels?.includes(label)
                 const hasInlineTag = task.learnings?.toLowerCase().includes(`#${label.toLowerCase()}`)
-                if (!hasLabel && !hasInlineTag) continue
+                const hasFrontmatterTag = item.meta?.tags?.some(
+                  t => t.toLowerCase() === label.toLowerCase()
+                )
+                if (!hasLabel && !hasInlineTag && !hasFrontmatterTag) continue
               }
 
               results.push({

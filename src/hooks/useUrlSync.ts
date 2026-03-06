@@ -23,6 +23,7 @@ const FILE_VIEW_SUFFIX: Record<string, ViewMode> = {
   '/editor': 'editor',
   '/kanban': 'kanban',
   '/document': 'document',
+  '/knowledge': 'knowledge',
 }
 
 const VIEW_TO_SUFFIX: Partial<Record<ViewMode, string>> = {
@@ -30,6 +31,7 @@ const VIEW_TO_SUFFIX: Partial<Record<ViewMode, string>> = {
   editor: '/editor',
   kanban: '/kanban',
   document: '/document',
+  knowledge: '/knowledge',
 }
 
 interface ParsedUrl {

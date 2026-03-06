@@ -23,6 +23,7 @@ import {
   deleteColumn as deleteColumnMutation,
   moveColumn as moveColumnMutation,
 } from '@/lib/markdown/task-mutator'
+import { extractFrontmatter, setFrontmatter } from '@automd/shared'
 import type { TaskMetadata } from '@/lib/markdown/types'
 import { nanoid } from 'nanoid'
 import { useUserStore } from './user-store'
@@ -73,6 +74,9 @@ interface DocumentStore {
   renameColumn: (columnId: string, newTitle: string) => void
   deleteColumn: (columnId: string) => void
   moveColumn: (columnId: string, targetIndex: number) => void
+
+  // Frontmatter actions
+  updateFrontmatterTags: (tags: string[]) => void
 
   // Undo/Redo actions
   undo: () => void
@@ -263,6 +267,14 @@ export const useDocumentStore = create<DocumentStore>()(
           get()._applyAstMutation((ast) =>
             moveColumnMutation(ast, columnId, targetIndex)
           )
+        },
+
+        updateFrontmatterTags: (tags: string[]) => {
+          get()._applyAstMutation((ast) => {
+            const currentMeta = extractFrontmatter(ast) ?? {}
+            setFrontmatter(ast, { ...currentMeta, tags })
+            return ast
+          })
         },
 
         undo: () => {

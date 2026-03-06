@@ -9,6 +9,7 @@ import { EditorView } from '@/components/editor/EditorView'
 import { ChecklistView } from '@/components/checklist/ChecklistView'
 import { KanbanView } from '@/components/kanban/KanbanView'
 import { DocumentView } from '@/components/document/DocumentView'
+import { KnowledgeView } from '@/components/knowledge/KnowledgeView'
 import { MemoryView } from '@/components/memory/MemoryView'
 import { PromptLibrary } from '@/components/prompts/PromptLibrary'
 import { ConnectView } from '@/components/connect/ConnectView'
@@ -150,6 +151,8 @@ function App() {
                     <DashboardView />
                   ) : activeView === 'document' ? (
                     <DocumentView />
+                  ) : activeView === 'knowledge' ? (
+                    <KnowledgeView />
                   ) : activeView === 'kanban' ? (
                     <KanbanView />
                   ) : activeView === 'editor' ? (

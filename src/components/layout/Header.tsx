@@ -55,7 +55,7 @@ export function Header() {
 
   // Show board view toggle only when a non-page/non-knowledge file is selected and we're in a file view
   const hideProgress = activeFile?.itemType === 'page' || activeFile?.itemType === 'knowledge'
-  const showViewToggle = activeFile && !hideProgress && activeView !== 'memory' && activeView !== 'prompts' && activeView !== 'dashboard' && activeView !== 'document'
+  const showViewToggle = activeFile && !hideProgress && activeView !== 'memory' && activeView !== 'prompts' && activeView !== 'dashboard' && activeView !== 'document' && activeView !== 'knowledge'
 
   return (
     <header className="shrink-0 relative z-10">
