@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import * as storage from '../storage.js'
 import { parseBoard } from '../board-cache.js'
+import { tokenizeForSearch, computeScore } from '@automd/shared'
 import type { Task } from '@automd/shared'
 
 export const contextRouter = Router()
@@ -10,15 +11,31 @@ interface ContextSource {
   boardId: string
   task: string
   taskId: string
-  type: 'knowledge' | 'learning'
+  type: 'knowledge' | 'learning' | 'task'
+}
+
+interface RelatedTask {
+  title: string
+  column: string
+  checked: boolean | null
+  labels: string[]
+  board: string
+  boardId: string
+  taskId: string
+}
+
+interface BoardContext {
+  boardName: string
+  boardId: string
+  description: string | null
+  tags: string[]
 }
 
 /**
  * GET /api/context?topic=auth&labels=backend,security&limit=20
  *
  * Returns a structured knowledge brief from all boards.
- * Designed for non-MCP users (ChatGPT, Perplexity, API-direct) to retrieve
- * paste-ready context for their AI conversations.
+ * Includes knowledge items, learnings, active work, and board context.
  */
 contextRouter.get('/', (req, res, next) => {
   try {
@@ -31,55 +48,94 @@ contextRouter.get('/', (req, res, next) => {
     const sources: ContextSource[] = []
     const knowledgeItems: Array<{ title: string; description?: string; learnings?: string; labels: string[]; board: string }> = []
     const learningItems: Array<{ task: string; learnings: string; labels: string[]; board: string }> = []
+    const relatedTasks: RelatedTask[] = []
+    const boardContextMap = new Map<string, BoardContext>()
+
+    // Pre-tokenize the topic query for scored matching
+    const topicTokens = topic ? tokenizeForSearch(topic) : []
 
     for (const file of files) {
       if (!file.markdown) continue
-      const { tasks, meta } = parseBoard(file.markdown, file.id)
+      const { columns, meta } = parseBoard(file.markdown, file.id)
       const boardTags = meta?.tags ?? []
+      let boardHasMatch = false
 
-      for (const task of flattenTasks(tasks)) {
-        const matchesTopic = !topic || matchesText(task, topic) ||
-          boardTags.some(t => t.toLowerCase().includes(topic))
-        const matchesLabels = labelFilter.length === 0 ||
-          labelFilter.some(l => task.metadata.labels.some(tl => tl.toLowerCase() === l)) ||
-          labelFilter.some(l => boardTags.some(t => t.toLowerCase() === l))
+      // Iterate columns → tasks to preserve column context
+      for (const column of columns) {
+        for (const task of flattenColumnTasks(column.tasks)) {
+          const matchesTopic = !topic || matchesText(task, topic, topicTokens, boardTags)
+          const matchesLabels = labelFilter.length === 0 ||
+            labelFilter.some(l => task.metadata.labels.some(tl => tl.toLowerCase() === l)) ||
+            labelFilter.some(l => boardTags.some(t => t.toLowerCase() === l))
 
-        if (!matchesTopic && !matchesLabels) continue
+          if (!matchesTopic && !matchesLabels) continue
+          boardHasMatch = true
 
-        // Knowledge items (tasks with knowledge:true)
-        if (task.metadata.knowledge) {
-          knowledgeItems.push({
-            title: task.displayContent,
-            description: task.description ?? undefined,
-            learnings: task.learnings ?? undefined,
-            labels: task.metadata.labels,
-            board: file.name,
-          })
-          sources.push({
-            board: file.name, boardId: file.id,
-            task: task.displayContent, taskId: task.id,
-            type: 'knowledge',
-          })
-        }
-
-        // Tasks with learnings (even if not knowledge:true)
-        if (task.learnings) {
-          learningItems.push({
-            task: task.displayContent,
-            learnings: task.learnings,
-            labels: task.metadata.labels,
-            board: file.name,
-          })
-          if (!task.metadata.knowledge) {
+          // Knowledge items (tasks with knowledge:true)
+          if (task.metadata.knowledge) {
+            knowledgeItems.push({
+              title: task.displayContent,
+              description: task.description ?? undefined,
+              learnings: task.learnings ?? undefined,
+              labels: task.metadata.labels,
+              board: file.name,
+            })
             sources.push({
               board: file.name, boardId: file.id,
               task: task.displayContent, taskId: task.id,
-              type: 'learning',
+              type: 'knowledge',
+            })
+          }
+
+          // Tasks with learnings (even if not knowledge:true)
+          if (task.learnings) {
+            learningItems.push({
+              task: task.displayContent,
+              learnings: task.learnings,
+              labels: task.metadata.labels,
+              board: file.name,
+            })
+            if (!task.metadata.knowledge) {
+              sources.push({
+                board: file.name, boardId: file.id,
+                task: task.displayContent, taskId: task.id,
+                type: 'learning',
+              })
+            }
+          }
+
+          // Related tasks: non-knowledge, non-archived active work
+          if (!task.metadata.knowledge && !task.metadata.archived) {
+            relatedTasks.push({
+              title: task.displayContent,
+              column: column.title,
+              checked: task.checked,
+              labels: task.metadata.labels,
+              board: file.name,
+              boardId: file.id,
+              taskId: task.id,
+            })
+            sources.push({
+              board: file.name, boardId: file.id,
+              task: task.displayContent, taskId: task.id,
+              type: 'task',
             })
           }
         }
       }
+
+      // Capture board-level context for any board with matches
+      if (boardHasMatch && !boardContextMap.has(file.id)) {
+        boardContextMap.set(file.id, {
+          boardName: file.name,
+          boardId: file.id,
+          description: meta?.description ?? null,
+          tags: boardTags,
+        })
+      }
     }
+
+    const boardContexts = Array.from(boardContextMap.values())
 
     // Build paste-ready context markdown
     const sections: string[] = []
@@ -101,6 +157,37 @@ contextRouter.get('/', (req, res, next) => {
       }
     }
 
+    if (relatedTasks.length > 0) {
+      sections.push('\n### Active Work')
+      // Group by column
+      const byColumn = new Map<string, RelatedTask[]>()
+      for (const task of relatedTasks.slice(0, limit)) {
+        const existing = byColumn.get(task.column) ?? []
+        existing.push(task)
+        byColumn.set(task.column, existing)
+      }
+      for (const [columnName, tasks] of byColumn) {
+        sections.push(`\n**${columnName}**`)
+        for (const task of tasks) {
+          const labelStr = task.labels.length ? ` (${task.labels.map(l => '#' + l).join(' ')})` : ''
+          const status = task.checked ? ' [done]' : ''
+          sections.push(`- ${task.title}${labelStr}${status} — ${task.board}`)
+        }
+      }
+    }
+
+    if (boardContexts.length > 0) {
+      const withDescriptions = boardContexts.filter(b => b.description || b.tags.length > 0)
+      if (withDescriptions.length > 0) {
+        sections.push('\n### Board Context')
+        for (const board of withDescriptions) {
+          const tagStr = board.tags.length ? ` (tags: ${board.tags.map(t => '#' + t).join(' ')})` : ''
+          sections.push(`\n**${board.boardName}**${tagStr}`)
+          if (board.description) sections.push(board.description)
+        }
+      }
+    }
+
     const contextText = sections.length > 0
       ? `## Knowledge from AutoMD${topic ? ` — ${topic}` : ''}\n\n${sections.join('\n')}`
       : 'No matching knowledge found.'
@@ -111,6 +198,10 @@ contextRouter.get('/', (req, res, next) => {
       sources: sources.slice(0, limit),
       knowledgeCount: knowledgeItems.length,
       learningCount: learningItems.length,
+      relatedTaskCount: relatedTasks.length,
+      boardContextCount: boardContexts.length,
+      relatedTasks: relatedTasks.slice(0, limit),
+      boardContexts,
       generatedAt: new Date().toISOString(),
     })
   } catch (err) {
@@ -118,7 +209,8 @@ contextRouter.get('/', (req, res, next) => {
   }
 })
 
-function flattenTasks(tasks: Task[]): Task[] {
+/** Flatten tasks including children, preserving iteration order */
+function flattenColumnTasks(tasks: Task[]): Task[] {
   const result: Task[] = []
   const stack = [...tasks]
   while (stack.length > 0) {
@@ -131,13 +223,27 @@ function flattenTasks(tasks: Task[]): Task[] {
   return result
 }
 
-function matchesText(task: Task, query: string): boolean {
+/**
+ * Scored text matching using tokenized search.
+ * Falls back to substring matching when topic has no tokens after stop-word removal.
+ */
+function matchesText(task: Task, query: string, queryTokens: string[], boardTags: string[]): boolean {
   const searchable = [
     task.displayContent,
     task.description,
     task.acceptanceCriteria,
     task.learnings,
     ...task.metadata.labels,
-  ].filter(Boolean).join(' ').toLowerCase()
-  return searchable.includes(query)
+    ...boardTags,
+  ].filter(Boolean).join(' ')
+
+  // If we have usable tokens, use scored matching
+  if (queryTokens.length > 0) {
+    const docTokens = tokenizeForSearch(searchable)
+    const score = computeScore(queryTokens, docTokens)
+    return score >= 0.3 // inclusive threshold for context gathering
+  }
+
+  // Fallback to substring for queries that are all stop words
+  return searchable.toLowerCase().includes(query)
 }
