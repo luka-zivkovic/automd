@@ -106,7 +106,10 @@ async function request(path: string, options?: RequestInit) {
 export const api = {
   // Files
   listFiles: () => request('/api/files'),
-  getFile: (id: string) => request(`/api/files/${id}`),
+  getFile: (id: string, detail?: 'L0' | 'L1' | 'L2') => {
+    const query = detail ? `?detail=${detail}` : ''
+    return request(`/api/files/${id}${query}`)
+  },
   createFile: (name: string, markdown?: string, projectId?: string, itemType?: string) =>
     request('/api/files', {
       method: 'POST',

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { api } from './api-client.js'
+import { tokenizeForSearch, computeScore } from './text-search-utils.js'
+import { findDuplicates, type ExistingKnowledgeItem } from './text-similarity.js'
 
 /** Lightweight types matching server API response shapes */
 interface ApiTask {
@@ -19,6 +21,7 @@ interface ApiTask {
   description: string | null
   acceptanceCriteria: string | null
   learnings: string | null
+  children?: ApiTask[]
 }
 
 interface ApiColumn {
@@ -40,12 +43,59 @@ function errorResponse(err: unknown) {
   return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true as const }
 }
 
+/** Collect all existing knowledge items across all boards for dedup checks */
+async function collectExistingKnowledge(): Promise<{ items: ExistingKnowledgeItem[]; errors: string[] }> {
+  const files = await api.listFiles()
+  const existing: ExistingKnowledgeItem[] = []
+  const errors: string[] = []
+
+  for (const fileSummary of files) {
+    try {
+      const item = await api.getFile(fileSummary.id)
+      for (const column of item.columns) {
+        for (const task of flattenApiTasks(column.tasks)) {
+          if (task.metadata?.knowledge === true || task.learnings) {
+            existing.push({
+              taskId: task.id,
+              itemId: fileSummary.id,
+              title: task.displayContent,
+              description: task.description,
+            })
+          }
+        }
+      }
+    } catch (err) {
+      const msg = `Failed to load item ${fileSummary.id}: ${err instanceof Error ? err.message : String(err)}`
+      console.error(`[mcp] ${msg}`)
+      errors.push(msg)
+    }
+  }
+
+  return { items: existing, errors }
+}
+
+/** Flatten API tasks including children */
+function flattenApiTasks(tasks: ApiTask[]): ApiTask[] {
+  const result: ApiTask[] = []
+  const stack = [...tasks]
+  while (stack.length > 0) {
+    const task = stack.pop()!
+    result.push(task)
+    if (task.children) {
+      for (let i = task.children.length - 1; i >= 0; i--) {
+        stack.push(task.children[i])
+      }
+    }
+  }
+  return result
+}
+
 export function registerTools(server: McpServer) {
   // ─── Item Tools ─────────────────────────────────────────────────
 
   server.registerTool('list_items', {
     title: 'List Items',
-    description: 'List all items (boards, checklists, pages, and knowledge bases) with their task counts. Returns array of {id, name, itemType, projectId, taskCount}.',
+    description: 'List all items (boards, checklists, pages, and knowledge bases) with task counts, progress %, tags, and column summaries. Returns array of {id, name, itemType, projectId, taskCount, progress, tags, columns: [{id, title, taskCount, checkedCount}]}.',
   }, async () => {
     try {
       const items = await api.listFiles()
@@ -57,11 +107,14 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('get_item', {
     title: 'Get Item',
-    description: 'Get an item (board, checklist, page, or knowledge base) with its columns and tasks',
-    inputSchema: { itemId: z.string().describe('The item ID (obtain from list_items)') },
-  }, async ({ itemId }) => {
+    description: 'Get an item with tiered detail levels to control token usage. L0: summary only (column names, task counts, progress). L1: tasks with titles + metadata (no descriptions/AC/learnings/markdown). L2: full content including markdown, descriptions, AC, learnings, children. Default: L1.',
+    inputSchema: {
+      itemId: z.string().describe('The item ID (obtain from list_items)'),
+      detail: z.enum(['L0', 'L1', 'L2']).optional().describe('Detail level: L0 (summary), L1 (tasks+metadata, default), L2 (full content with descriptions/AC/learnings/markdown)'),
+    },
+  }, async ({ itemId, detail }) => {
     try {
-      const item = await api.getFile(itemId)
+      const item = await api.getFile(itemId, detail ?? 'L1')
       return json(item)
     } catch (err) {
       return errorResponse(err)
@@ -426,9 +479,9 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('search_tasks', {
     title: 'Search Tasks',
-    description: 'Search for tasks across all items by text, assignee, label, or status. Use list_tags to discover valid label values.',
+    description: 'Search for tasks across all items by text, assignee, label, or status. Results are ranked by relevance. Use list_tags to discover valid label values.',
     inputSchema: {
-      query: z.string().optional().describe('Text to search for in task content'),
+      query: z.string().optional().describe('Text to search for in task content (supports prefix matching, e.g. "auth" finds "authentication")'),
       assignee: z.string().optional().describe('Filter by assignee (without @)'),
       label: z.string().optional().describe('Filter by label (without #)'),
       checked: z.boolean().optional().describe('Filter by completion status'),
@@ -443,35 +496,51 @@ export function registerTools(server: McpServer) {
         content: string
         column: string
         checked: boolean | null
+        relevance: number
       }> = []
+
+      const queryTokens = query ? tokenizeForSearch(query) : []
+      const queryLower = query?.toLowerCase()
 
       for (const itemSummary of items) {
         try {
           const item = await api.getFile(itemSummary.id)
           for (const column of item.columns) {
-            for (const task of column.tasks) {
-              let match = true
-              if (query && !task.content.toLowerCase().includes(query.toLowerCase())) match = false
-              if (assignee && !task.metadata.assignees.includes(assignee)) match = false
-              if (label && !task.metadata.labels.includes(label)) match = false
-              if (checked !== undefined && task.checked !== checked) match = false
+            for (const task of flattenApiTasks(column.tasks)) {
+              if (assignee && !task.metadata.assignees.includes(assignee)) continue
+              if (label && !task.metadata.labels.includes(label)) continue
+              if (checked !== undefined && task.checked !== checked) continue
 
-              if (match) {
-                results.push({
-                  itemId: itemSummary.id,
-                  itemName: itemSummary.name,
-                  taskId: task.id,
-                  content: task.content,
-                  column: column.title,
-                  checked: task.checked,
-                })
+              let relevance = 1.0
+              if (query) {
+                if (queryTokens.length > 0) {
+                  const docTokens = tokenizeForSearch(task.content)
+                  relevance = computeScore(queryTokens, docTokens)
+                  if (relevance < 0.3) continue
+                } else if (queryLower) {
+                  // Fallback to substring for stop-word-only queries
+                  if (!task.content.toLowerCase().includes(queryLower)) continue
+                }
               }
+
+              results.push({
+                itemId: itemSummary.id,
+                itemName: itemSummary.name,
+                taskId: task.id,
+                content: task.content,
+                column: column.title,
+                checked: task.checked,
+                relevance: Math.round(relevance * 100) / 100,
+              })
             }
           }
         } catch (err) {
           console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
         }
       }
+
+      // Sort by relevance descending
+      results.sort((a, b) => b.relevance - a.relevance)
 
       return json({ count: results.length, results })
     } catch (err) {
@@ -481,9 +550,9 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('search_context', {
     title: 'Search Context',
-    description: 'Search for contextual detail (descriptions, acceptance criteria, learnings) across all items. Returns any task with rich content — broader than find_knowledge which only returns knowledge:true items. Use this for finding implementation details, past decisions, and context before starting work. Use list_tags to discover valid label values.',
+    description: 'Search for contextual detail (descriptions, acceptance criteria, learnings) across all items. Results ranked by relevance with prefix/fuzzy matching. Returns any task with rich content — broader than find_knowledge which only returns knowledge:true items. Use list_tags to discover valid label values.',
     inputSchema: {
-      query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content'),
+      query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
       completedOnly: z.boolean().optional().describe('Only return completed tasks (default: false). Useful for finding learnings from done work.'),
     },
@@ -501,15 +570,17 @@ export function registerTools(server: McpServer) {
         description: string | null
         acceptanceCriteria: string | null
         learnings: string | null
+        relevance: number
       }> = []
 
-      const q = query?.toLowerCase()
+      const queryTokens = query ? tokenizeForSearch(query) : []
+      const queryLower = query?.toLowerCase()
 
       for (const itemSummary of items) {
         try {
           const item = await api.getFile(itemSummary.id)
           for (const column of item.columns) {
-            for (const task of column.tasks) {
+            for (const task of flattenApiTasks(column.tasks)) {
               if (completedOnly && !task.checked) continue
 
               // Build searchable text from all fields (including frontmatter tags)
@@ -519,44 +590,54 @@ export function registerTools(server: McpServer) {
                 task.acceptanceCriteria,
                 task.learnings,
                 ...(item.meta?.tags ?? []),
-              ].filter(Boolean).join(' ').toLowerCase()
+              ].filter(Boolean).join(' ')
 
-              let match = true
-              if (q && !searchable.includes(q)) match = false
+              let relevance = 1.0
+              if (query) {
+                if (queryTokens.length > 0) {
+                  const docTokens = tokenizeForSearch(searchable)
+                  relevance = computeScore(queryTokens, docTokens)
+                  if (relevance < 0.3) continue
+                } else if (queryLower) {
+                  if (!searchable.toLowerCase().includes(queryLower)) continue
+                }
+              }
+
               if (label) {
-                // Check task labels, inline #tags, AND frontmatter tags
                 const hasLabel = task.metadata.labels.includes(label)
-                const hasInlineLabelTag = searchable.includes(`#${label.toLowerCase()}`)
+                const hasInlineLabelTag = searchable.toLowerCase().includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
-                  t => t.toLowerCase() === label.toLowerCase()
+                  (t: string) => t.toLowerCase() === label.toLowerCase()
                 )
-                if (!hasLabel && !hasInlineLabelTag && !hasFrontmatterTag) match = false
+                if (!hasLabel && !hasInlineLabelTag && !hasFrontmatterTag) continue
               }
 
               // Only include results that have some knowledge content
               const hasContext = task.description || task.acceptanceCriteria || task.learnings
-              if (!hasContext) match = false
+              if (!hasContext) continue
 
-              if (match) {
-                results.push({
-                  itemId: itemSummary.id,
-                  itemName: itemSummary.name,
-                  taskId: task.id,
-                  taskTitle: task.displayContent,
-                  taskLabels: task.metadata.labels,
-                  column: column.title,
-                  checked: task.checked,
-                  description: task.description,
-                  acceptanceCriteria: task.acceptanceCriteria,
-                  learnings: task.learnings,
-                })
-              }
+              results.push({
+                itemId: itemSummary.id,
+                itemName: itemSummary.name,
+                taskId: task.id,
+                taskTitle: task.displayContent,
+                taskLabels: task.metadata.labels,
+                column: column.title,
+                checked: task.checked,
+                description: task.description,
+                acceptanceCriteria: task.acceptanceCriteria,
+                learnings: task.learnings,
+                relevance: Math.round(relevance * 100) / 100,
+              })
             }
           }
         } catch (err) {
           console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
         }
       }
+
+      // Sort by relevance descending
+      results.sort((a, b) => b.relevance - a.relevance)
 
       return json({ count: results.length, results })
     } catch (err) {
@@ -633,7 +714,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('add_knowledge', {
     title: 'Add Knowledge',
-    description: 'Add a knowledge item. Knowledge items are tasks with knowledge:true — they store decisions, patterns, references, and institutional memory. They reuse the task infrastructure but skip the checkbox/completion workflow. Call list_tags first to reuse existing labels.',
+    description: 'Add a knowledge item with automatic duplicate detection. If a similar knowledge item already exists, returns the duplicate instead of creating a new one. Use force:true to bypass dedup. Knowledge items are tasks with knowledge:true — they store decisions, patterns, references, and institutional memory. Call list_tags first to reuse existing labels.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       columnId: z.string().describe('The column ID'),
@@ -642,9 +723,30 @@ export function registerTools(server: McpServer) {
       learnings: z.string().optional().describe('Key learnings as bullet points (newline-separated). Supports #tags.'),
       labels: z.array(z.string()).optional().describe('Labels for categorization (e.g. ["security", "database"])'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Agent name to tag with built-by:'),
+      force: z.boolean().optional().describe('Skip duplicate check and create anyway (default: false)'),
     },
-  }, async ({ itemId, columnId, content, description, learnings, labels, agentName }) => {
+  }, async ({ itemId, columnId, content, description, learnings, labels, agentName, force }) => {
     try {
+      // Dedup check (unless forced)
+      if (!force) {
+        const { items: existing, errors: dedupErrors } = await collectExistingKnowledge()
+        const duplicates = findDuplicates({ title: content, description }, existing)
+        if (duplicates.length > 0) {
+          return json({
+            duplicate: true,
+            message: 'Similar knowledge already exists. Use update_knowledge to modify the existing entry, or pass force:true to create anyway.',
+            matches: duplicates.map(d => ({
+              itemId: d.itemId,
+              taskId: d.taskId,
+              title: d.title,
+              titleSimilarity: d.titleSimilarity,
+              contentSimilarity: d.contentSimilarity,
+            })),
+            ...(dedupErrors.length > 0 ? { dedupWarning: `${dedupErrors.length} boards could not be checked` } : {}),
+          })
+        }
+      }
+
       // 1. Build content with knowledge:true flag
       let taskContent = `${content} knowledge:true`
       if (labels?.length) taskContent += ' ' + labels.map(l => `#${l}`).join(' ')
@@ -727,9 +829,9 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('find_knowledge', {
     title: 'Find Knowledge',
-    description: 'Search specifically for curated knowledge items (knowledge:true) and tasks with captured learnings. Use for institutional decisions, patterns, and reference. For broader task history including descriptions, use search_context instead. Use list_tags to discover valid label values.',
+    description: 'Search specifically for curated knowledge items (knowledge:true) and tasks with captured learnings. Results ranked by relevance with prefix matching. Use for institutional decisions, patterns, and reference. For broader task history including descriptions, use search_context instead. Use list_tags to discover valid label values.',
     inputSchema: {
-      query: z.string().optional().describe('Text to search for in knowledge items'),
+      query: z.string().optional().describe('Text to search for in knowledge items (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #)'),
     },
   }, async ({ query, label }) => {
@@ -744,28 +846,38 @@ export function registerTools(server: McpServer) {
         description: string | null
         learnings: string | null
         column: string
+        relevance: number
       }> = []
 
-      const q = query?.toLowerCase()
+      const queryTokens = query ? tokenizeForSearch(query) : []
+      const queryLower = query?.toLowerCase()
 
       for (const itemSummary of items) {
         try {
           const item = await api.getFile(itemSummary.id)
           for (const column of item.columns) {
-            for (const task of column.tasks) {
+            for (const task of flattenApiTasks(column.tasks)) {
               // Must be knowledge:true OR have learnings
               const isKnowledge = task.metadata?.knowledge === true
               const hasLearnings = !!task.learnings
               if (!isKnowledge && !hasLearnings) continue
 
-              // Apply text filter (including frontmatter tags)
-              if (q) {
-                const searchable = [
-                  task.content, task.description,
-                  task.acceptanceCriteria, task.learnings,
-                  ...(item.meta?.tags ?? []),
-                ].filter(Boolean).join(' ').toLowerCase()
-                if (!searchable.includes(q)) continue
+              const searchable = [
+                task.content, task.description,
+                task.acceptanceCriteria, task.learnings,
+                ...(item.meta?.tags ?? []),
+              ].filter(Boolean).join(' ')
+
+              // Apply text filter with scored matching
+              let relevance = 1.0
+              if (query) {
+                if (queryTokens.length > 0) {
+                  const docTokens = tokenizeForSearch(searchable)
+                  relevance = computeScore(queryTokens, docTokens)
+                  if (relevance < 0.3) continue
+                } else if (queryLower) {
+                  if (!searchable.toLowerCase().includes(queryLower)) continue
+                }
               }
 
               // Apply label filter (including frontmatter tags)
@@ -773,7 +885,7 @@ export function registerTools(server: McpServer) {
                 const hasLabel = task.metadata?.labels?.includes(label)
                 const hasInlineTag = task.learnings?.toLowerCase().includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
-                  t => t.toLowerCase() === label.toLowerCase()
+                  (t: string) => t.toLowerCase() === label.toLowerCase()
                 )
                 if (!hasLabel && !hasInlineTag && !hasFrontmatterTag) continue
               }
@@ -787,6 +899,7 @@ export function registerTools(server: McpServer) {
                 description: task.description,
                 learnings: task.learnings,
                 column: column.title,
+                relevance: Math.round(relevance * 100) / 100,
               })
             }
           }
@@ -794,6 +907,9 @@ export function registerTools(server: McpServer) {
           console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
         }
       }
+
+      // Sort by relevance descending
+      results.sort((a, b) => b.relevance - a.relevance)
 
       return json({ count: results.length, results })
     } catch (err) {
@@ -803,7 +919,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('synthesize_topic', {
     title: 'Synthesize Topic',
-    description: 'Gather all knowledge about a topic and return a structured summary. This collects and organizes existing knowledge items — it does NOT generate AI content. Returns a paste-ready context brief.',
+    description: 'Gather all knowledge about a topic and return a comprehensive context brief. Collects knowledge items, learnings from tasks, active related work, and board context — does NOT generate AI content. Returns a paste-ready summary with counts.',
     inputSchema: {
       topic: z.string().describe('Topic to synthesize knowledge about (e.g. "authentication", "pricing", "deployment")'),
       labels: z.string().optional().describe('Comma-separated labels to filter by (e.g. "backend,security"). Unlike label on other tools which takes a single value, this accepts multiple comma-separated.'),
@@ -811,7 +927,8 @@ export function registerTools(server: McpServer) {
   }, async ({ topic, labels }) => {
     try {
       const result = await api.getContext({ topic, labels, limit: 50 })
-      return text(result.context)
+      const header = `Found ${result.knowledgeCount} knowledge items, ${result.learningCount} learnings, ${result.relatedTaskCount ?? 0} active tasks across ${result.boardContextCount ?? 0} boards.\n\n`
+      return text(header + result.context)
     } catch (err) {
       return errorResponse(err)
     }
@@ -819,7 +936,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('import_memories', {
     title: 'Import Memories',
-    description: 'Bulk import knowledge items from external sources (AI conversation logs, meeting notes, etc.). Creates knowledge:true tasks for each item.',
+    description: 'Bulk import knowledge items from external sources (AI conversation logs, meeting notes, etc.). Automatically skips duplicates unless skipDuplicates is set to false. Creates knowledge:true tasks for each item.',
     inputSchema: {
       itemId: z.string().describe('The item ID to import into'),
       columnId: z.string().describe('The column ID to add items to'),
@@ -830,13 +947,37 @@ export function registerTools(server: McpServer) {
         labels: z.array(z.string()).optional().describe('Labels for categorization'),
       })).describe('Array of knowledge items to import'),
       agentName: z.string().regex(/^[\w-]+$/).optional().describe('Agent name to tag imports with'),
+      skipDuplicates: z.boolean().optional().describe('Skip items that match existing knowledge (default: true)'),
     },
-  }, async ({ itemId, columnId, items, agentName }) => {
+  }, async ({ itemId, columnId, items, agentName, skipDuplicates }) => {
     try {
+      const shouldSkipDups = skipDuplicates !== false // default true
+
+      // Pre-fetch existing knowledge for dedup (once, not per item)
+      let existingKnowledge: ExistingKnowledgeItem[] = []
+      if (shouldSkipDups) {
+        const { items: existing } = await collectExistingKnowledge()
+        existingKnowledge = existing
+      }
+
       const results: Array<{ content: string; taskId: string }> = []
+      const skippedItems: Array<{ content: string; matchedTitle: string; similarity: number }> = []
       const errors: string[] = []
 
       for (const item of items) {
+        // Dedup check
+        if (shouldSkipDups) {
+          const duplicates = findDuplicates({ title: item.content, description: item.description }, existingKnowledge)
+          if (duplicates.length > 0) {
+            skippedItems.push({
+              content: item.content,
+              matchedTitle: duplicates[0].title,
+              similarity: duplicates[0].titleSimilarity,
+            })
+            continue
+          }
+        }
+
         try {
           let taskContent = `${item.content} knowledge:true`
           if (item.labels?.length) taskContent += ' ' + item.labels.map(l => `#${l}`).join(' ')
@@ -859,6 +1000,16 @@ export function registerTools(server: McpServer) {
           }
 
           results.push({ content: item.content, taskId: result.taskId })
+
+          // Add newly created item to existing knowledge so subsequent items in this batch can dedup against it
+          if (shouldSkipDups && result?.taskId) {
+            existingKnowledge.push({
+              taskId: result.taskId,
+              itemId,
+              title: item.content,
+              description: item.description,
+            })
+          }
         } catch (err) {
           errors.push(`Failed to import "${item.content}": ${err instanceof Error ? err.message : String(err)}`)
         }
@@ -866,8 +1017,10 @@ export function registerTools(server: McpServer) {
 
       return json({
         imported: results.length,
+        skipped: skippedItems.length,
         failed: errors.length,
         results,
+        skippedItems: skippedItems.length > 0 ? skippedItems : undefined,
         errors: errors.length > 0 ? errors : undefined,
       })
     } catch (err) {
