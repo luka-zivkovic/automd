@@ -21,6 +21,7 @@ interface ApiTask {
   description: string | null
   acceptanceCriteria: string | null
   learnings: string | null
+  children?: ApiTask[]
 }
 
 interface ApiColumn {
@@ -43,31 +44,50 @@ function errorResponse(err: unknown) {
 }
 
 /** Collect all existing knowledge items across all boards for dedup checks */
-async function collectExistingKnowledge(): Promise<ExistingKnowledgeItem[]> {
-  const items = await api.listFiles()
+async function collectExistingKnowledge(): Promise<{ items: ExistingKnowledgeItem[]; errors: string[] }> {
+  const files = await api.listFiles()
   const existing: ExistingKnowledgeItem[] = []
+  const errors: string[] = []
 
-  for (const itemSummary of items) {
+  for (const fileSummary of files) {
     try {
-      const item = await api.getFile(itemSummary.id)
+      const item = await api.getFile(fileSummary.id)
       for (const column of item.columns) {
-        for (const task of column.tasks) {
+        for (const task of flattenApiTasks(column.tasks)) {
           if (task.metadata?.knowledge === true || task.learnings) {
             existing.push({
               taskId: task.id,
-              itemId: itemSummary.id,
+              itemId: fileSummary.id,
               title: task.displayContent,
               description: task.description,
             })
           }
         }
       }
-    } catch {
-      // Skip items that fail to load
+    } catch (err) {
+      const msg = `Failed to load item ${fileSummary.id}: ${err instanceof Error ? err.message : String(err)}`
+      console.error(`[mcp] ${msg}`)
+      errors.push(msg)
     }
   }
 
-  return existing
+  return { items: existing, errors }
+}
+
+/** Flatten API tasks including children */
+function flattenApiTasks(tasks: ApiTask[]): ApiTask[] {
+  const result: ApiTask[] = []
+  const stack = [...tasks]
+  while (stack.length > 0) {
+    const task = stack.pop()!
+    result.push(task)
+    if (task.children) {
+      for (let i = task.children.length - 1; i >= 0; i--) {
+        stack.push(task.children[i])
+      }
+    }
+  }
+  return result
 }
 
 export function registerTools(server: McpServer) {
@@ -486,7 +506,7 @@ export function registerTools(server: McpServer) {
         try {
           const item = await api.getFile(itemSummary.id)
           for (const column of item.columns) {
-            for (const task of column.tasks) {
+            for (const task of flattenApiTasks(column.tasks)) {
               if (assignee && !task.metadata.assignees.includes(assignee)) continue
               if (label && !task.metadata.labels.includes(label)) continue
               if (checked !== undefined && task.checked !== checked) continue
@@ -560,7 +580,7 @@ export function registerTools(server: McpServer) {
         try {
           const item = await api.getFile(itemSummary.id)
           for (const column of item.columns) {
-            for (const task of column.tasks) {
+            for (const task of flattenApiTasks(column.tasks)) {
               if (completedOnly && !task.checked) continue
 
               // Build searchable text from all fields (including frontmatter tags)
@@ -709,7 +729,7 @@ export function registerTools(server: McpServer) {
     try {
       // Dedup check (unless forced)
       if (!force) {
-        const existing = await collectExistingKnowledge()
+        const { items: existing, errors: dedupErrors } = await collectExistingKnowledge()
         const duplicates = findDuplicates({ title: content, description }, existing)
         if (duplicates.length > 0) {
           return json({
@@ -722,6 +742,7 @@ export function registerTools(server: McpServer) {
               titleSimilarity: d.titleSimilarity,
               contentSimilarity: d.contentSimilarity,
             })),
+            ...(dedupErrors.length > 0 ? { dedupWarning: `${dedupErrors.length} boards could not be checked` } : {}),
           })
         }
       }
@@ -835,7 +856,7 @@ export function registerTools(server: McpServer) {
         try {
           const item = await api.getFile(itemSummary.id)
           for (const column of item.columns) {
-            for (const task of column.tasks) {
+            for (const task of flattenApiTasks(column.tasks)) {
               // Must be knowledge:true OR have learnings
               const isKnowledge = task.metadata?.knowledge === true
               const hasLearnings = !!task.learnings
@@ -935,7 +956,8 @@ export function registerTools(server: McpServer) {
       // Pre-fetch existing knowledge for dedup (once, not per item)
       let existingKnowledge: ExistingKnowledgeItem[] = []
       if (shouldSkipDups) {
-        existingKnowledge = await collectExistingKnowledge()
+        const { items: existing } = await collectExistingKnowledge()
+        existingKnowledge = existing
       }
 
       const results: Array<{ content: string; taskId: string }> = []

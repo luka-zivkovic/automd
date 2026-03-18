@@ -38,4 +38,13 @@ export default defineWorkspace([
       },
     },
   },
+  // MCP package tests (node)
+  {
+    test: {
+      name: 'mcp',
+      globals: true,
+      environment: 'node',
+      include: ['packages/mcp/src/__tests__/*.test.ts'],
+    },
+  },
 ])

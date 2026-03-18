@@ -97,8 +97,10 @@ describe('findDuplicates', () => {
       },
       existingItems,
     )
-    // Should match t1 due to content overlap even though title differs
-    expect(matches.length).toBeGreaterThanOrEqual(0) // May or may not cross threshold
+    // Title Jaccard is low (~0.17) and content Jaccard (~0.5) doesn't cross 0.6 threshold
+    // because Jaccard uses exact word matching (no stemming), so "prevent" ≠ "prevents"
+    // This correctly shows the limitation of Jaccard without stemming
+    expect(matches).toHaveLength(0)
   })
 
   it('should return matches sorted by title similarity', () => {

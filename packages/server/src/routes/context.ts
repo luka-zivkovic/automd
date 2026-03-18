@@ -104,8 +104,8 @@ contextRouter.get('/', (req, res, next) => {
             }
           }
 
-          // Related tasks: non-knowledge, non-archived active work
-          if (!task.metadata.knowledge && !task.metadata.archived) {
+          // Related tasks: non-knowledge, non-archived, unchecked active work
+          if (!task.metadata.knowledge && !task.metadata.archived && !task.checked) {
             relatedTasks.push({
               title: task.displayContent,
               column: column.title,
