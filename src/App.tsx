@@ -13,6 +13,7 @@ import { KnowledgeView } from '@/components/knowledge/KnowledgeView'
 import { MemoryView } from '@/components/memory/MemoryView'
 import { PromptLibrary } from '@/components/prompts/PromptLibrary'
 import { ConnectView } from '@/components/connect/ConnectView'
+import { SettingsView } from '@/components/settings/SettingsView'
 import { FileDropZone } from '@/components/editor/FileDropZone'
 import { TaskDetailPanel } from '@/components/detail/TaskDetailPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -141,7 +142,9 @@ function App() {
                 <LoadingSkeleton />
               ) : (
                 <>
-                  {activeView === 'memory' ? (
+                  {activeView === 'settings' ? (
+                    <SettingsView />
+                  ) : activeView === 'memory' ? (
                     <MemoryView />
                   ) : activeView === 'connect' ? (
                     <ConnectView />

@@ -180,6 +180,42 @@ export const api = {
       body: JSON.stringify({ tags }),
     }),
 
+  // Search (hybrid: text + semantic when embeddings enabled)
+  search: (params: { q: string; mode?: string; limit?: number; label?: string; knowledgeOnly?: boolean; compact?: boolean }) => {
+    const query = new URLSearchParams()
+    query.set('q', params.q)
+    if (params.mode) query.set('mode', params.mode)
+    if (params.limit) query.set('limit', String(params.limit))
+    if (params.label) query.set('label', params.label)
+    if (params.knowledgeOnly) query.set('knowledgeOnly', 'true')
+    if (params.compact) query.set('compact', 'true')
+    return request(`/api/search?${query.toString()}`)
+  },
+
+  // Relationships
+  addRelationship: (data: {
+    sourceItemId: string; sourceTaskId: string;
+    targetItemId: string; targetTaskId: string;
+    relationType: string; createdBy?: string;
+  }) => request('/api/relationships', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  getRelationships: (itemId: string, taskId: string) =>
+    request(`/api/relationships/${itemId}/${taskId}`),
+  deleteRelationship: (id: string) =>
+    request(`/api/relationships/${id}`, { method: 'DELETE' }),
+
+  // Context Assembly
+  assembleContext: (params: { itemId?: string; taskId?: string; topic?: string; limit?: number }) => {
+    const query = new URLSearchParams()
+    if (params.itemId) query.set('itemId', params.itemId)
+    if (params.taskId) query.set('taskId', params.taskId)
+    if (params.topic) query.set('topic', params.topic)
+    if (params.limit) query.set('limit', String(params.limit))
+    return request(`/api/context/assemble?${query.toString()}`)
+  },
+
   // Health
   health: () => request('/api/health'),
 }

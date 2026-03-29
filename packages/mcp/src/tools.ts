@@ -2,6 +2,21 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { api } from './api-client.js'
 
+// ─── Embeddings capability detection ────────────────────────────────────
+
+let _serverHasSearch: boolean | null = null
+
+async function serverHasSearch(): Promise<boolean> {
+  if (_serverHasSearch !== null) return _serverHasSearch
+  try {
+    const health = await api.health() as { embeddings?: { enabled: boolean } }
+    _serverHasSearch = !!health.embeddings?.enabled
+  } catch {
+    _serverHasSearch = false
+  }
+  return _serverHasSearch
+}
+
 /** Lightweight types matching server API response shapes */
 interface ApiTask {
   id: string
@@ -489,6 +504,16 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, label, completedOnly }) => {
     try {
+      // Try hybrid search when embeddings are available and we have a text query
+      if (query && await serverHasSearch()) {
+        try {
+          const searchResults = await api.search({ q: query, label: label ?? undefined, compact: true })
+          return json({ count: searchResults.count, results: searchResults.results, mode: searchResults.mode })
+        } catch {
+          // Fall through to legacy search
+        }
+      }
+
       const items = await api.listFiles()
       const results: Array<{
         itemId: string
@@ -734,6 +759,16 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, label }) => {
     try {
+      // Try hybrid search when embeddings are available and we have a text query
+      if (query && await serverHasSearch()) {
+        try {
+          const searchResults = await api.search({ q: query, knowledgeOnly: true, label: label ?? undefined, compact: true })
+          return json({ count: searchResults.count, results: searchResults.results, mode: searchResults.mode })
+        } catch {
+          // Fall through to legacy search
+        }
+      }
+
       const items = await api.listFiles()
       const results: Array<{
         itemId: string
@@ -874,6 +909,68 @@ export function registerTools(server: McpServer) {
       return errorResponse(err)
     }
   })
+
+  // ─── Relationship Tools ──────────────────────────────────────────
+
+  server.registerTool('link_tasks', {
+    title: 'Link Tasks',
+    description: 'Create a relationship between two tasks or knowledge items. Relationships help build a context graph for smarter retrieval.',
+    inputSchema: {
+      sourceItemId: z.string().describe('Source board/item ID'),
+      sourceTaskId: z.string().describe('Source task ID'),
+      targetItemId: z.string().describe('Target board/item ID'),
+      targetTaskId: z.string().describe('Target task ID'),
+      relationType: z.enum(['depends-on', 'related-to', 'supersedes', 'learned-from']).describe(
+        'Relationship type: depends-on (A blocks B), related-to (bidirectional), supersedes (A replaces B), learned-from (knowledge extracted from task)',
+      ),
+    },
+  }, async ({ sourceItemId, sourceTaskId, targetItemId, targetTaskId, relationType }) => {
+    try {
+      const result = await api.addRelationship({
+        sourceItemId, sourceTaskId, targetItemId, targetTaskId,
+        relationType, createdBy: 'agent',
+      })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('get_related', {
+    title: 'Get Related',
+    description: 'Get all tasks/knowledge related to a specific task via explicit relationships and auto-detected similarity. Returns both incoming and outgoing relationships.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+    },
+  }, async ({ itemId, taskId }) => {
+    try {
+      const result = await api.getRelationships(itemId, taskId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('get_working_context', {
+    title: 'Get Working Context',
+    description: 'Assemble rich context for a task or topic. Returns the task itself, related knowledge (via relationships + semantic similarity), recent learnings from completed tasks, and board-level context. One call replaces: get_item + find_knowledge + search_context + synthesize_topic.',
+    inputSchema: {
+      itemId: z.string().optional().describe('The item/board ID (required if taskId provided)'),
+      taskId: z.string().optional().describe('The task ID to get context for'),
+      topic: z.string().optional().describe('Topic string for topic-based context assembly (alternative to itemId+taskId)'),
+      limit: z.number().optional().describe('Max related items to return (default 10, max 30)'),
+    },
+  }, async ({ itemId, taskId, topic, limit }) => {
+    try {
+      const result = await api.assembleContext({ itemId, taskId, topic, limit })
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  // ─── Archive Tools ─────────────────────────────────────────────
 
   server.registerTool('archive_completed_tasks', {
     title: 'Archive Completed Tasks',

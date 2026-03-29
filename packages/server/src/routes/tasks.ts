@@ -21,6 +21,7 @@ import { isValidId } from '../validation.js'
 import { parseBoard } from '../board-cache.js'
 import { dispatchWebhookEvent } from '../webhook-delivery.js'
 import type { WebhookEventType, TaskEventData } from '../webhook-events.js'
+import { queueEmbeddingUpdate } from '../embeddings/index.js'
 
 type FileParams = { fileId: string }
 type TaskParams = { fileId: string; taskId: string }
@@ -38,6 +39,7 @@ function saveAndBroadcast(
     if (webhookEvent) {
       dispatchWebhookEvent(webhookEvent.event, webhookEvent.data)
     }
+    queueEmbeddingUpdate(fileId, markdown, file.itemType)
   }
   return file
 }

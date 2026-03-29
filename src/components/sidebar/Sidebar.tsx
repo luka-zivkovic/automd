@@ -26,7 +26,7 @@ import { FileListItem } from './FileListItem'
 import { CreateItemMenu } from './CreateItemMenu'
 import { ProjectSection } from './ProjectSection'
 import { CreateProjectDialog } from './CreateProjectDialog'
-import { FolderPlus, Brain, LayoutDashboard, Plug } from 'lucide-react'
+import { FolderPlus, Brain, LayoutDashboard, Plug, Settings } from 'lucide-react'
 import type { BoardFile } from '@/lib/markdown/types'
 
 /**
@@ -267,6 +267,17 @@ export function Sidebar() {
           >
             <Plug className="size-3.5" />
             Connect
+          </button>
+          <button
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              activeView === 'settings'
+                ? 'bg-primary/10 text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            }`}
+            onClick={() => setActiveView('settings')}
+          >
+            <Settings className="size-3.5" />
+            Settings
           </button>
         </div>
 
