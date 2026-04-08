@@ -6,6 +6,7 @@ import { withWriteLock } from '../write-lock.js'
 import { isValidId, isValidName } from '../validation.js'
 import { parseBoard, invalidateBoardCache } from '../board-cache.js'
 import { dispatchWebhookEvent } from '../webhook-delivery.js'
+import { queueEmbeddingUpdate, removeEmbeddings } from '../embeddings/index.js'
 import type { Column, Task } from '@automd/shared'
 
 export const filesRouter = Router()
@@ -213,6 +214,7 @@ filesRouter.put('/:id', async (req, res, next) => {
         if (!file) return { status: 404 as const }
         broadcast({ type: 'file:updated', payload: { id: file.id, markdown: file.markdown, actor } })
         dispatchWebhookEvent('board.updated', { boardId: file.id, boardName: file.name })
+        queueEmbeddingUpdate(req.params.id, markdown, file.itemType)
         return { status: 200 as const, file }
       }
 
@@ -256,6 +258,7 @@ filesRouter.delete('/:id', async (req, res, next) => {
       return
     }
     invalidateBoardCache(req.params.id)
+    removeEmbeddings(req.params.id)
     broadcast({ type: 'file:deleted', payload: { id: req.params.id, actor: req.body?.actor } })
     dispatchWebhookEvent('board.deleted', {
       boardId: req.params.id,

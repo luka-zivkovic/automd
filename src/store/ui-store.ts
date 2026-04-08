@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist, subscribeWithSelector } from 'zustand/middleware'
 
-export type ViewMode = 'dashboard' | 'editor' | 'checklist' | 'kanban' | 'document' | 'knowledge' | 'memory' | 'prompts' | 'connect'
+export type ViewMode = 'dashboard' | 'editor' | 'checklist' | 'kanban' | 'document' | 'knowledge' | 'memory' | 'prompts' | 'connect' | 'settings'
 
 interface UiStore {
   activeView: ViewMode

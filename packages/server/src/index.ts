@@ -8,6 +8,9 @@ import { getStoragePath, getStorageSummary } from './storage.js'
 import { startUpdateChecker } from './update-check.js'
 import { isSetupComplete, isAuthDisabled } from './auth-storage.js'
 import { initS3Sync, hydrateFromS3, isS3SyncEnabled } from './s3-sync.js'
+import { initEmbeddings, isEmbeddingsEnabled, shutdownEmbeddings } from './embeddings/index.js'
+import { closeRelationshipsDb } from './relationships.js'
+import { readSettings } from './settings-storage.js'
 
 // Load root .env file (pnpm/tsx don't auto-load .env)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -31,6 +34,9 @@ async function main() {
   initS3Sync()
   await hydrateFromS3()
 
+  // Embeddings: init from settings (sync, non-blocking)
+  initEmbeddings(readSettings())
+
   const app = createApp()
 
   // Create HTTP server and attach WebSocket
@@ -46,6 +52,7 @@ async function main() {
     }
     console.log(`[automd-server] WebSocket: ws://localhost:${PORT}/ws`)
     console.log(`[automd-server] S3 sync: ${isS3SyncEnabled() ? 'enabled' : 'disabled'}`)
+    console.log(`[automd-server] Embeddings: ${isEmbeddingsEnabled() ? 'enabled' : 'disabled'}`)
 
     if (isAuthDisabled()) {
       console.log('[automd-server] Authentication: disabled (AUTOMD_DISABLE_AUTH=true)')
@@ -57,6 +64,18 @@ async function main() {
 
     startUpdateChecker()
   })
+
+  // Graceful shutdown: close DBs to avoid WAL corruption
+  const shutdown = () => {
+    console.log('[automd-server] Shutting down...')
+    shutdownEmbeddings()
+    closeRelationshipsDb()
+    server.close(() => process.exit(0))
+    // Force exit after 5s if close hangs
+    setTimeout(() => process.exit(0), 5000).unref()
+  }
+  process.on('SIGTERM', shutdown)
+  process.on('SIGINT', shutdown)
 }
 
 main().catch((err) => {

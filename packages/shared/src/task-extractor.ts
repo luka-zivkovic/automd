@@ -213,8 +213,19 @@ function extractHeadingTask(
           consumed++
           continue
         }
-        // Any other H3 exits learnings mode
+        // Any other H3+ subsection: capture heading text into description, exit learnings
         inLearnings = false
+        consumed++
+        descriptionParts.push(toString(node as Heading))
+        continue
+      }
+
+      // H4+ subsections: capture into description
+      if (d > 3) {
+        inLearnings = false
+        consumed++
+        descriptionParts.push(toString(node as Heading))
+        continue
       }
     }
 

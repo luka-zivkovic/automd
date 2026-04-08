@@ -10,11 +10,16 @@ import { projectsRouter } from './routes/projects.js'
 import { contextRouter } from './routes/context.js'
 import { webhooksRouter } from './routes/webhooks.js'
 import { tagsRouter } from './routes/tags.js'
+import { settingsRouter } from './routes/settings.js'
+import { searchRouter } from './routes/search.js'
+import { relationshipsRouter } from './routes/relationships.js'
 import { getStoragePath, StorageError } from './storage.js'
 import { getUpdateInfo } from './update-check.js'
 import { requireAuth } from './auth-middleware.js'
 import { isSetupComplete, isAuthDisabled } from './auth-storage.js'
 import { getS3SyncStatus } from './s3-sync.js'
+import { getEmbeddingsStatus } from './embeddings/index.js'
+import { countRelationships } from './relationships.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -25,11 +30,16 @@ export function createApp() {
 
   // Public endpoints (no auth required)
   app.get('/api/health', (_req, res) => {
+    let relationships
+    try { relationships = countRelationships() } catch { relationships = null }
+
     res.json({
       status: 'ok',
       storage: getStoragePath(),
       authRequired: isSetupComplete() && !isAuthDisabled(),
       s3: getS3SyncStatus(),
+      embeddings: getEmbeddingsStatus(),
+      relationships,
     })
   })
 
@@ -51,6 +61,9 @@ export function createApp() {
   app.use('/api/context', contextRouter)
   app.use('/api/tags', tagsRouter)
   app.use('/api/webhooks', webhooksRouter)
+  app.use('/api/settings', settingsRouter)
+  app.use('/api/search', searchRouter)
+  app.use('/api/relationships', relationshipsRouter)
 
   // In production, serve the Vite-built frontend as static files
   if (process.env.NODE_ENV === 'production') {
