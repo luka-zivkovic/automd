@@ -7,16 +7,59 @@ import { isValidId, isValidName } from '../validation.js'
 import { parseBoard, invalidateBoardCache } from '../board-cache.js'
 import { dispatchWebhookEvent } from '../webhook-delivery.js'
 import { queueEmbeddingUpdate, removeEmbeddings } from '../embeddings/index.js'
+import type { Column, Task } from '@automd/shared'
 
 export const filesRouter = Router()
 
-// List all boards
+type DetailLevel = 'L0' | 'L1' | 'L2'
+
+function parseDetailLevel(value: unknown): DetailLevel {
+  if (value === 'L0' || value === 'L1') return value
+  return 'L2' // default for backward compat
+}
+
+function computeProgress(columns: Column[]): number {
+  let checkable = 0
+  let checked = 0
+  for (const col of columns) {
+    for (const task of col.tasks) {
+      if (task.checked !== null) {
+        checkable++
+        if (task.checked) checked++
+      }
+    }
+  }
+  return checkable > 0 ? Math.round((checked / checkable) * 100) : 0
+}
+
+function columnSummary(col: Column) {
+  let checkedCount = 0
+  for (const task of col.tasks) {
+    if (task.checked) checkedCount++
+  }
+  return {
+    id: col.id,
+    title: col.title,
+    taskCount: col.tasks.length,
+    checkedCount,
+  }
+}
+
+function stripTaskForL1(task: Task) {
+  return {
+    id: task.id,
+    displayContent: task.displayContent,
+    checked: task.checked,
+    metadata: task.metadata,
+  }
+}
+
+// List all boards (enriched with column summaries and progress)
 filesRouter.get('/', (_req, res, next) => {
   try {
     const files = storage.listFiles()
-    // Return metadata only (no full markdown) for listing
     const summary = files.map((f) => {
-      const { columns } = parseBoard(f.markdown, f.id)
+      const { columns, meta } = parseBoard(f.markdown, f.id)
       const taskCount = columns.reduce((sum, col) => sum + col.tasks.length, 0)
       return {
         id: f.id,
@@ -24,6 +67,9 @@ filesRouter.get('/', (_req, res, next) => {
         projectId: f.projectId,
         itemType: f.itemType,
         taskCount,
+        progress: computeProgress(columns),
+        tags: meta?.tags ?? [],
+        columns: columns.map(columnSummary),
         createdAt: f.createdAt,
         updatedAt: f.updatedAt,
       }
@@ -35,6 +81,7 @@ filesRouter.get('/', (_req, res, next) => {
 })
 
 // Get a single board with parsed data
+// Supports ?detail=L0|L1|L2 (default L2 for backward compat)
 filesRouter.get('/:id', (req, res, next) => {
   if (!isValidId(req.params.id)) {
     res.status(400).json({ error: 'Invalid board ID format' })
@@ -48,22 +95,58 @@ filesRouter.get('/:id', (req, res, next) => {
       return
     }
 
+    const detail = parseDetailLevel(req.query.detail)
     const { columns, tasks, meta } = parseBoard(file.markdown, req.params.id)
 
     res.setHeader('ETag', `"${file.updatedAt}"`)
-    res.json({
-      id: file.id,
-      name: file.name,
-      projectId: file.projectId,
-      itemType: file.itemType,
-      markdown: file.markdown,
-      meta,
-      columns,
-      tasks,
-      taskCount: tasks.length,
-      createdAt: file.createdAt,
-      updatedAt: file.updatedAt,
-    })
+
+    if (detail === 'L0') {
+      // Summary only — no individual tasks, no markdown
+      res.json({
+        id: file.id,
+        name: file.name,
+        projectId: file.projectId,
+        itemType: file.itemType,
+        meta,
+        columns: columns.map(columnSummary),
+        taskCount: tasks.length,
+        progress: computeProgress(columns),
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+      })
+    } else if (detail === 'L1') {
+      // Tasks with metadata but no descriptions/AC/learnings/children/markdown
+      res.json({
+        id: file.id,
+        name: file.name,
+        projectId: file.projectId,
+        itemType: file.itemType,
+        meta,
+        columns: columns.map(col => ({
+          ...columnSummary(col),
+          tasks: col.tasks.map(stripTaskForL1),
+        })),
+        taskCount: tasks.length,
+        progress: computeProgress(columns),
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+      })
+    } else {
+      // L2: Full response (current behavior)
+      res.json({
+        id: file.id,
+        name: file.name,
+        projectId: file.projectId,
+        itemType: file.itemType,
+        markdown: file.markdown,
+        meta,
+        columns,
+        tasks,
+        taskCount: tasks.length,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+      })
+    }
   } catch (err) {
     next(err)
   }

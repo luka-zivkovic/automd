@@ -63,3 +63,6 @@ export { DEFAULT_MARKDOWN, DEFAULT_PAGE_MARKDOWN, DEFAULT_KNOWLEDGE_MARKDOWN } f
 // Prompt Catalog
 export type { PromptDefinition, TemplatePrompt, TemplatePromptPlaceholder } from './prompt-catalog.js'
 export { MCP_PROMPTS, TEMPLATE_PROMPTS } from './prompt-catalog.js'
+
+// Text Search
+export { tokenizeForSearch, computeScore, searchAndRank, STOP_WORDS } from './text-search.js'
