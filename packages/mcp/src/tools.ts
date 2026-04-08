@@ -5,15 +5,21 @@ import { api } from './api-client.js'
 // ─── Embeddings capability detection ────────────────────────────────────
 
 let _serverHasSearch: boolean | null = null
+let _searchCheckedAt = 0
+const SEARCH_CHECK_TTL_MS = 60_000 // Re-check every 60s
 
 async function serverHasSearch(): Promise<boolean> {
-  if (_serverHasSearch !== null) return _serverHasSearch
+  const now = Date.now()
+  if (_serverHasSearch !== null && (now - _searchCheckedAt) < SEARCH_CHECK_TTL_MS) {
+    return _serverHasSearch
+  }
   try {
     const health = await api.health() as { embeddings?: { enabled: boolean } }
     _serverHasSearch = !!health.embeddings?.enabled
   } catch {
     _serverHasSearch = false
   }
+  _searchCheckedAt = now
   return _serverHasSearch
 }
 

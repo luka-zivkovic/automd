@@ -1,6 +1,7 @@
 import { Router } from 'express'
-import { readSettings, readRawSettings, writeSettings, maskSettings } from '../settings-storage.js'
+import { readSettings, readRawSettings, writeSettings, maskSettings, isMaskedValue } from '../settings-storage.js'
 import type { AppSettings } from '../settings-storage.js'
+import { withWriteLock } from '../write-lock.js'
 
 export const settingsRouter = Router()
 
@@ -19,44 +20,48 @@ settingsRouter.get('/', (_req, res, next) => {
   }
 })
 
-// Update settings
+// Update settings (serialized via write lock to prevent read-modify-write races)
 settingsRouter.put('/', async (req, res, next) => {
   try {
     const body = req.body as Partial<AppSettings>
-    const current = readRawSettings()
 
-    // Merge: only update fields that are provided
-    if (body.embeddings) {
-      const emb = body.embeddings
+    const current = await withWriteLock(() => {
+      const settings = readRawSettings()
 
-      if (emb.provider !== undefined) {
-        current.embeddings.provider = emb.provider
+      // Merge: only update fields that are provided
+      if (body.embeddings) {
+        const emb = body.embeddings
+
+        if (emb.provider !== undefined) {
+          settings.embeddings.provider = emb.provider
+        }
+
+        if (emb.openai) {
+          // Only update apiKey if it's not a masked/sentinel value
+          if (emb.openai.apiKey !== undefined && !isMaskedValue(emb.openai.apiKey)) {
+            settings.embeddings.openai.apiKey = emb.openai.apiKey
+          }
+          if (emb.openai.baseUrl !== undefined) {
+            settings.embeddings.openai.baseUrl = emb.openai.baseUrl
+          }
+          if (emb.openai.model !== undefined) {
+            settings.embeddings.openai.model = emb.openai.model
+          }
+        }
+
+        if (emb.ollama) {
+          if (emb.ollama.url !== undefined) {
+            settings.embeddings.ollama.url = emb.ollama.url
+          }
+          if (emb.ollama.model !== undefined) {
+            settings.embeddings.ollama.model = emb.ollama.model
+          }
+        }
       }
 
-      if (emb.openai) {
-        // Only update apiKey if it's not a masked value
-        if (emb.openai.apiKey !== undefined && !emb.openai.apiKey.includes('****')) {
-          current.embeddings.openai.apiKey = emb.openai.apiKey
-        }
-        if (emb.openai.baseUrl !== undefined) {
-          current.embeddings.openai.baseUrl = emb.openai.baseUrl
-        }
-        if (emb.openai.model !== undefined) {
-          current.embeddings.openai.model = emb.openai.model
-        }
-      }
-
-      if (emb.ollama) {
-        if (emb.ollama.url !== undefined) {
-          current.embeddings.ollama.url = emb.ollama.url
-        }
-        if (emb.ollama.model !== undefined) {
-          current.embeddings.ollama.model = emb.ollama.model
-        }
-      }
-    }
-
-    writeSettings(current)
+      writeSettings(settings)
+      return settings
+    })
 
     // Notify embeddings system of config change (if initialized)
     const { reinitEmbeddings } = await import('../embeddings/index.js')

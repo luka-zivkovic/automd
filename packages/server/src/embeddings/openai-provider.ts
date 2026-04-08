@@ -57,6 +57,7 @@ async function embedBatch(config: OpenAIConfig, texts: string[]): Promise<Float3
       model: config.model,
       input: texts,
     }),
+    signal: AbortSignal.timeout(30_000),
   })
 
   if (!response.ok) {

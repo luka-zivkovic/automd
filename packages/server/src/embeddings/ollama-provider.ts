@@ -37,6 +37,7 @@ export function createOllamaProvider(config: OllamaConfig): EmbeddingProvider {
           model: config.model,
           input: texts,
         }),
+        signal: AbortSignal.timeout(60_000), // Ollama may be slower (local inference)
       })
 
       if (!response.ok) {

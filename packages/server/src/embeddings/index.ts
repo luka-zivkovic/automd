@@ -145,6 +145,19 @@ export function getEmbeddingsStatus() {
   }
 }
 
+/** Close stores and clean up. Call on server shutdown. */
+export function shutdownEmbeddings(): void {
+  // Clear pending debounce timers
+  for (const timer of debounceTimers.values()) clearTimeout(timer)
+  debounceTimers.clear()
+
+  if (store) {
+    store.close()
+    store = null
+  }
+  provider = null
+}
+
 // ─── Internal ───────────────────────────────────────────────────────────
 
 async function indexBoardSafe(fileId: string, markdown: string, itemType?: import('@automd/shared').ItemType): Promise<void> {

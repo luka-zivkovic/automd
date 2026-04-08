@@ -157,7 +157,14 @@ function envProvider(): 'openai' | 'ollama' | null {
   return null
 }
 
-function maskApiKey(key: string): string {
-  if (!key || key.length < 8) return key ? '****' : ''
-  return key.slice(0, 7) + '****'
+const MASK_SUFFIX = '••••••'
+
+export function maskApiKey(key: string): string {
+  if (!key || key.length < 8) return key ? MASK_SUFFIX : ''
+  return key.slice(0, 7) + MASK_SUFFIX
+}
+
+/** Returns true if the value looks like a masked key (i.e. should not overwrite real key). */
+export function isMaskedValue(value: string): boolean {
+  return value.includes(MASK_SUFFIX)
 }

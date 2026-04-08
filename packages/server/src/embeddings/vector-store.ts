@@ -66,13 +66,18 @@ export class VectorStore {
 
   private migrateTierColumn(): void {
     try {
-      // Check if tier column exists
       const info = this.db.prepare('PRAGMA table_info(embedding_meta)').all() as Array<{ name: string }>
-      const hasTier = info.some((col) => col.name === 'tier')
-      if (!hasTier) {
+      const cols = new Set(info.map((col) => col.name))
+
+      if (!cols.has('tier')) {
         this.db.exec("ALTER TABLE embedding_meta ADD COLUMN tier TEXT NOT NULL DEFAULT 'knowledge'")
         this.db.exec('CREATE INDEX IF NOT EXISTS idx_meta_tier ON embedding_meta(tier)')
         console.log('[embeddings] Migrated: added tier column to embedding_meta')
+      }
+
+      if (!cols.has('dimensions')) {
+        this.db.exec('ALTER TABLE embedding_meta ADD COLUMN dimensions INTEGER')
+        console.log('[embeddings] Migrated: added dimensions column to embedding_meta')
       }
     } catch {
       // Table may not exist yet — will be created in init()
@@ -108,38 +113,47 @@ export class VectorStore {
 
   private checkDimensionsMismatch(): boolean {
     try {
-      // Check if any stored provider doesn't match current
+      // Check provider name AND stored dimensions against current config.
+      // Provider name alone is insufficient — switching models within the
+      // same provider (e.g. text-embedding-3-small → 3-large) changes dimensions.
       const row = this.db
-        .prepare('SELECT provider FROM embedding_meta LIMIT 1')
-        .get() as { provider: string } | undefined
+        .prepare('SELECT provider, dimensions FROM embedding_meta LIMIT 1')
+        .get() as { provider: string; dimensions?: number } | undefined
 
       if (!row) return false
-      return row.provider !== this.providerName
+      if (row.provider !== this.providerName) return true
+      if (row.dimensions != null && row.dimensions !== this.dimensions) return true
+      return false
     } catch {
       return false
     }
   }
 
   upsert(id: string, itemId: string, taskId: string, embedding: Float32Array, contentHash: string, tier: ContentTier = 'knowledge'): void {
-    const existing = this.db
-      .prepare('SELECT id FROM embedding_meta WHERE id = ?')
-      .get(id) as { id: string } | undefined
+    const embBuf = Buffer.from(embedding.buffer)
+    const now = Date.now()
 
-    if (existing) {
-      // Update: delete old vec entry first (vec0 doesn't support UPDATE)
-      this.db.prepare('DELETE FROM embeddings WHERE id = ?').run(id)
-      this.db.prepare('INSERT INTO embeddings(id, embedding) VALUES (?, ?)').run(id, Buffer.from(embedding.buffer))
-      this.db.prepare(`
-        UPDATE embedding_meta SET content_hash = ?, provider = ?, updated_at = ?, tier = ? WHERE id = ?
-      `).run(contentHash, this.providerName, Date.now(), tier, id)
-    } else {
-      // Insert new
-      this.db.prepare('INSERT INTO embeddings(id, embedding) VALUES (?, ?)').run(id, Buffer.from(embedding.buffer))
-      this.db.prepare(`
-        INSERT INTO embedding_meta (id, item_id, task_id, content_hash, provider, updated_at, tier)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(id, itemId, taskId, contentHash, this.providerName, Date.now(), tier)
-    }
+    this.db.transaction(() => {
+      const existing = this.db
+        .prepare('SELECT id FROM embedding_meta WHERE id = ?')
+        .get(id) as { id: string } | undefined
+
+      if (existing) {
+        // Update: delete old vec entry first (vec0 doesn't support UPDATE)
+        this.db.prepare('DELETE FROM embeddings WHERE id = ?').run(id)
+        this.db.prepare('INSERT INTO embeddings(id, embedding) VALUES (?, ?)').run(id, embBuf)
+        this.db.prepare(`
+          UPDATE embedding_meta SET content_hash = ?, provider = ?, updated_at = ?, tier = ?, dimensions = ? WHERE id = ?
+        `).run(contentHash, this.providerName, now, tier, this.dimensions, id)
+      } else {
+        // Insert new
+        this.db.prepare('INSERT INTO embeddings(id, embedding) VALUES (?, ?)').run(id, embBuf)
+        this.db.prepare(`
+          INSERT INTO embedding_meta (id, item_id, task_id, content_hash, provider, updated_at, tier, dimensions)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, itemId, taskId, contentHash, this.providerName, now, tier, this.dimensions)
+      }
+    })()
   }
 
   search(queryEmbedding: Float32Array, limit: number): SearchResult[] {
