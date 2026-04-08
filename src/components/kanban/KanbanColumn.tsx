@@ -12,9 +12,10 @@ interface KanbanColumnProps {
   column: Column
   columnIndex: number
   totalColumns: number
+  pendingDrop?: { taskId: string; columnId: string; index: number } | null
 }
 
-export function KanbanColumn({ column, columnIndex, totalColumns }: KanbanColumnProps) {
+export function KanbanColumn({ column, columnIndex, totalColumns, pendingDrop }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column.id}`,
     data: { type: 'column', column },
@@ -43,6 +44,9 @@ export function KanbanColumn({ column, columnIndex, totalColumns }: KanbanColumn
           {column.tasks.map((task) => (
             <KanbanCard key={task.id} task={task} />
           ))}
+          {pendingDrop && (
+            <div className="h-16 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 mx-1" />
+          )}
         </SortableContext>
 
         {column.tasks.length === 0 && (

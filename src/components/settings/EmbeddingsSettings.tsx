@@ -34,7 +34,10 @@ export function EmbeddingsSettings() {
   const [loaded, setLoaded] = useState(false)
 
   const loadSettings = useCallback(async () => {
-    if (!HAS_SERVER) return
+    if (!HAS_SERVER) {
+      setLoaded(true)
+      return
+    }
     const result = await apiFetch<SettingsResponse>('/settings')
     if (result.ok) {
       setConfig(result.data.settings.embeddings)
@@ -104,6 +107,22 @@ export function EmbeddingsSettings() {
       <Card className="py-4 gap-3">
         <CardContent className="px-5 flex items-center justify-center py-8">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!HAS_SERVER) {
+    return (
+      <Card className="py-4 gap-3">
+        <CardHeader className="px-5 py-0">
+          <div className="flex items-center gap-2">
+            <Brain className="size-4 text-muted-foreground" />
+            <CardTitle className="text-base font-medium">Embeddings</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="px-5 text-sm text-muted-foreground">
+          Connect to an AutoMD server to configure semantic search and embeddings.
         </CardContent>
       </Card>
     )

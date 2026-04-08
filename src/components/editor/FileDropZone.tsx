@@ -21,6 +21,8 @@ export function FileDropZone({ children }: FileDropZoneProps) {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    // Only hide when actually leaving the container, not moving between children
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
     setIsDragOver(false)
   }, [])
 

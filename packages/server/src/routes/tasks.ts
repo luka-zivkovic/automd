@@ -372,3 +372,96 @@ tasksRouter.delete('/:taskId', async (req: Request<TaskParams>, res, next) => {
     next(err)
   }
 })
+
+// Batch update tasks (multiple mutations in a single write-lock)
+tasksRouter.post('/batch', async (req: Request<FileParams>, res, next) => {
+  if (!isValidId(req.params.fileId)) {
+    res.status(400).json({ error: 'Invalid board ID format' })
+    return
+  }
+
+  const { updates } = req.body
+  if (!Array.isArray(updates) || updates.length === 0) {
+    res.status(400).json({ error: 'updates array is required' })
+    return
+  }
+
+  if (updates.length > 50) {
+    res.status(400).json({ error: 'Maximum 50 updates per batch' })
+    return
+  }
+
+  const fileId = req.params.fileId
+
+  try {
+    const result = await withWriteLock(() => {
+      const file = storage.getFile(fileId)
+      if (!file) return { status: 404 as const }
+
+      const ifMatch = req.headers['if-match']
+      if (ifMatch && ifMatch !== `"${file.updatedAt}"`) {
+        return { status: 409 as const, currentVersion: file.updatedAt }
+      }
+
+      let currentAst = parseBoard(file.markdown, fileId).ast
+      const results: Array<{ taskId: string; action: string; ok: boolean; error?: string }> = []
+
+      for (const update of updates) {
+        const { taskId, action, ...params } = update
+        if (!taskId || !action) {
+          results.push({ taskId: taskId ?? 'unknown', action: action ?? 'unknown', ok: false, error: 'taskId and action required' })
+          continue
+        }
+
+        try {
+          switch (action) {
+            case 'toggle':
+              currentAst = toggleTask(currentAst, taskId)
+              break
+            case 'updateContent':
+              if (params.content) currentAst = updateTaskContent(currentAst, taskId, params.content)
+              break
+            case 'updateMetadata':
+              if (params.displayContent && params.metadata)
+                currentAst = updateTaskMetadata(currentAst, taskId, params.displayContent, params.metadata as TaskMetadata)
+              break
+            case 'move':
+              if (params.targetColumnId !== undefined && params.targetIndex !== undefined)
+                currentAst = moveTask(currentAst, taskId, params.targetColumnId, params.targetIndex)
+              break
+            case 'delete':
+              currentAst = deleteTask(currentAst, taskId)
+              break
+            default:
+              results.push({ taskId, action, ok: false, error: `Unknown action: ${action}` })
+              continue
+          }
+          results.push({ taskId, action, ok: true })
+        } catch (err) {
+          results.push({ taskId, action, ok: false, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+
+      const markdown = serializeAst(currentAst)
+      invalidateBoardCache(fileId)
+      const savedFile = storage.updateFileMarkdown(fileId, markdown)
+
+      return { status: 200 as const, results, file: savedFile }
+    })
+
+    if (result.status === 404) {
+      res.status(404).json({ error: 'Board not found' })
+    } else if (result.status === 409) {
+      res.status(409).json({ error: 'Conflict', currentVersion: result.currentVersion })
+    } else {
+      if (result.file) {
+        broadcast({ type: 'file:updated', payload: { id: result.file.id, markdown: result.file.markdown } })
+        dispatchWebhookEvent('board.updated', { boardId: result.file.id, boardName: result.file.name })
+        queueEmbeddingUpdate(result.file.id, result.file.markdown, result.file.itemType)
+      }
+      res.json({ ok: true, results: result.results })
+    }
+  } catch (err) {
+    next(err)
+  }
+})

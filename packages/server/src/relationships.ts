@@ -149,6 +149,42 @@ export function getRelationships(itemId: string, taskId: string): RelatedItem[] 
   return results
 }
 
+/** Batch-fetch relationships for multiple tasks at once (single transaction, reused prepared statements). */
+export function getRelationshipsBatch(
+  tasks: Array<{ itemId: string; taskId: string }>
+): Map<string, RelatedItem[]> {
+  if (tasks.length === 0) return new Map()
+  const d = getDb()
+  const result = new Map<string, RelatedItem[]>()
+
+  for (const t of tasks) {
+    result.set(`${t.itemId}:${t.taskId}`, [])
+  }
+
+  const fetchAll = d.transaction(() => {
+    const outStmt = d.prepare(`SELECT target_item_id, target_task_id, relation_type, created_by FROM relationships WHERE source_item_id = ? AND source_task_id = ?`)
+    const inStmt = d.prepare(`SELECT source_item_id, source_task_id, relation_type, created_by FROM relationships WHERE target_item_id = ? AND target_task_id = ?`)
+
+    for (const t of tasks) {
+      const key = `${t.itemId}:${t.taskId}`
+      const outgoing = outStmt.all(t.itemId, t.taskId) as Array<{
+        target_item_id: string; target_task_id: string; relation_type: RelationType; created_by: string
+      }>
+      const incoming = inStmt.all(t.itemId, t.taskId) as Array<{
+        source_item_id: string; source_task_id: string; relation_type: RelationType; created_by: string
+      }>
+
+      result.get(key)!.push(
+        ...outgoing.map(r => ({ itemId: r.target_item_id, taskId: r.target_task_id, relationType: r.relation_type, direction: 'outgoing' as const, createdBy: r.created_by })),
+        ...incoming.map(r => ({ itemId: r.source_item_id, taskId: r.source_task_id, relationType: r.relation_type, direction: 'incoming' as const, createdBy: r.created_by }))
+      )
+    }
+  })
+
+  fetchAll()
+  return result
+}
+
 /** Remove a specific relationship by ID. */
 export function removeRelationship(id: string): boolean {
   const d = getDb()

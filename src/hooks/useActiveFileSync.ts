@@ -66,8 +66,9 @@ export function useActiveFileSync() {
         // Don't echo back if we're loading a file
         if (isLoadingFileRef.current) return
 
-        const activeFileId = useFilesStore.getState().activeFileId
-        if (!activeFileId) return
+        // Capture the active file ID NOW (at change time), not at timer fire time
+        const targetFileId = useFilesStore.getState().activeFileId
+        if (!targetFileId) return
 
         // Debounce the write to files-store
         if (debounceRef.current) {
@@ -75,7 +76,11 @@ export function useActiveFileSync() {
         }
 
         debounceRef.current = setTimeout(() => {
-          useFilesStore.getState().updateFileMarkdown(activeFileId, markdown)
+          // Verify the target file is still active before writing
+          const currentFileId = useFilesStore.getState().activeFileId
+          if (currentFileId === targetFileId) {
+            useFilesStore.getState().updateFileMarkdown(targetFileId, markdown)
+          }
         }, 300)
       }
     )

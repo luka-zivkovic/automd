@@ -12,7 +12,7 @@ import * as storage from '../storage.js'
 import { parseBoard } from '../board-cache.js'
 import { semanticSearch, isEmbeddingsEnabled } from '../embeddings/index.js'
 import { classifyTask } from '../embeddings/indexer.js'
-import { getRelationships } from '../relationships.js'
+import { getRelationshipsBatch } from '../relationships.js'
 import type { Task } from '@automd/shared'
 import { tokenizeForSearch } from '@automd/shared'
 import type { ContentTier } from '../embeddings/vector-store.js'
@@ -408,28 +408,23 @@ const GRAPH_BOOST = 0.10 // 10% boost for items related to other results
 function applyGraphBoost(hits: SearchHit[]): SearchHit[] {
   if (hits.length < 2) return hits
 
-  // Build a set of all result keys for quick lookup
   const resultKeys = new Set(hits.map(h => `${h.itemId}:${h.taskId}`))
 
-  // For each result, check if it has relationships to other results
-  const boosted = hits.map((hit) => {
-    try {
-      const rels = getRelationships(hit.itemId, hit.taskId)
-      const relatedInResults = rels.filter(r => resultKeys.has(`${r.itemId}:${r.taskId}`))
+  try {
+    const relMap = getRelationshipsBatch(hits.map(h => ({ itemId: h.itemId, taskId: h.taskId })))
 
+    return hits.map((hit) => {
+      const rels = relMap.get(`${hit.itemId}:${hit.taskId}`) ?? []
+      const relatedInResults = rels.filter(r => resultKeys.has(`${r.itemId}:${r.taskId}`))
       if (relatedInResults.length > 0) {
-        // Boost proportional to number of related items in results (capped)
         const boost = 1 + GRAPH_BOOST * Math.min(relatedInResults.length, 3)
         return { ...hit, score: hit.score * boost }
       }
-    } catch {
-      // Relationships not available — skip boost
-    }
-    return hit
-  })
-
-  boosted.sort((a, b) => b.score - a.score)
-  return boosted
+      return hit
+    }).sort((a, b) => b.score - a.score)
+  } catch {
+    return hits
+  }
 }
 
 // ─── Compact Results ────────────────────────────────────────────────
