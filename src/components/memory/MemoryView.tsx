@@ -135,10 +135,17 @@ export function MemoryView() {
   const handleNavigateToTask = useCallback(
     (boardId: string, taskId: string) => {
       setActiveFile(boardId)
-      setActiveView('editor')
+      const file = files.find((f) => f.id === boardId)
+      const viewMap: Record<string, string> = {
+        board: 'kanban',
+        checklist: 'checklist',
+        page: 'editor',
+        knowledge: 'knowledge',
+      }
+      setActiveView((viewMap[file?.itemType ?? ''] || 'checklist') as any)
       setSelectedTaskId(taskId)
     },
-    [setActiveFile, setActiveView, setSelectedTaskId]
+    [files, setActiveFile, setActiveView, setSelectedTaskId]
   )
 
   return (

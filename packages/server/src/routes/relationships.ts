@@ -15,6 +15,7 @@ import {
   countRelationships,
   type RelationType,
 } from '../relationships.js'
+import { isValidId } from '../validation.js'
 
 export const relationshipsRouter = Router()
 
@@ -28,8 +29,18 @@ relationshipsRouter.post('/', (req, res) => {
     return
   }
 
+  if (!isValidId(sourceItemId) || !isValidId(sourceTaskId) || !isValidId(targetItemId) || !isValidId(targetTaskId)) {
+    res.status(400).json({ error: 'Invalid ID format' })
+    return
+  }
+
   if (!VALID_TYPES.includes(relationType)) {
     res.status(400).json({ error: `Invalid relationType. Must be one of: ${VALID_TYPES.join(', ')}` })
+    return
+  }
+
+  if (sourceItemId === targetItemId && sourceTaskId === targetTaskId) {
+    res.status(400).json({ error: 'Cannot create a relationship between a task and itself' })
     return
   }
 
@@ -51,8 +62,13 @@ relationshipsRouter.get('/stats', (_req, res) => {
 })
 
 relationshipsRouter.get('/:itemId/:taskId', (req, res) => {
+  const { itemId, taskId } = req.params
+  if (!isValidId(itemId) || !isValidId(taskId)) {
+    res.status(400).json({ error: 'Invalid ID format' })
+    return
+  }
+
   try {
-    const { itemId, taskId } = req.params
     const related = getRelationships(itemId, taskId)
     res.json({ count: related.length, relationships: related })
   } catch (err) {
@@ -61,6 +77,11 @@ relationshipsRouter.get('/:itemId/:taskId', (req, res) => {
 })
 
 relationshipsRouter.delete('/:id', (req, res) => {
+  if (!isValidId(req.params.id)) {
+    res.status(400).json({ error: 'Invalid ID format' })
+    return
+  }
+
   try {
     const removed = removeRelationship(req.params.id)
     res.json({ removed })

@@ -12,6 +12,7 @@ import {
 } from '../auth-storage.js'
 import { requireAuth, extractToken } from '../auth-middleware.js'
 import { isValidName } from '../validation.js'
+import { withWriteLock } from '../write-lock.js'
 
 export const authRouter = Router()
 
@@ -24,12 +25,7 @@ authRouter.get('/status', (_req, res) => {
 })
 
 // Setup — create admin (only works once)
-authRouter.post('/setup', (req, res) => {
-  if (isSetupComplete()) {
-    res.status(403).json({ error: 'Admin account already exists.' })
-    return
-  }
-
+authRouter.post('/setup', async (req, res) => {
   const { email, password } = req.body
   if (!email || typeof email !== 'string' || !/^.+@.+\..+$/.test(email.trim())) {
     res.status(400).json({ error: 'A valid email address is required.' })
@@ -41,8 +37,18 @@ authRouter.post('/setup', (req, res) => {
   }
 
   try {
-    const result = createAdmin(email, password)
-    res.status(201).json(result)
+    const result = await withWriteLock(() => {
+      if (isSetupComplete()) {
+        return { error: 'Admin account already exists.' as const }
+      }
+      return createAdmin(email, password)
+    })
+
+    if ('error' in result) {
+      res.status(403).json({ error: result.error })
+    } else {
+      res.status(201).json(result)
+    }
   } catch (err) {
     res.status(500).json({ error: 'Failed to create admin account.' })
   }

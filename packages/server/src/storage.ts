@@ -242,12 +242,16 @@ export function updateFileMarkdown(id: string, markdown: string): BoardFile | nu
     const entry = manifest.files.find((f) => f.id === id)
     if (!entry) return null
 
+    // Write markdown FIRST (atomic: tmp + rename)
+    const mdPath = safeBoardPath(entry.filename)
+    const tmpPath = mdPath + '.tmp'
+    fs.writeFileSync(tmpPath, markdown, 'utf-8')
+    fs.renameSync(tmpPath, mdPath)
+    syncFileToS3(mdPath, markdown).catch(() => {})
+
+    // THEN update manifest
     entry.updatedAt = Date.now()
     writeManifest(manifest)
-
-    const mdPath = safeBoardPath(entry.filename)
-    fs.writeFileSync(mdPath, markdown, 'utf-8')
-    syncFileToS3(mdPath, markdown).catch(() => {})
 
     return {
       id: entry.id,

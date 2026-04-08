@@ -41,10 +41,10 @@ async function deliverWithRetry(
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS[attempt]))
     }
 
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 10_000)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10_000)
 
+    try {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -76,6 +76,7 @@ async function deliverWithRetry(
         `[webhooks] Delivery ${deliveryId} attempt ${attempt + 1} failed: HTTP ${response.status}`,
       )
     } catch (err) {
+      clearTimeout(timeout)
       console.warn(
         `[webhooks] Delivery ${deliveryId} attempt ${attempt + 1} error:`,
         (err as Error).message,
@@ -108,15 +109,15 @@ export function dispatchWebhookEvent(
 
   if (webhooks.length === 0) return
 
-  const deliveryId = nanoid(16)
-  const payload: WebhookPayload = {
-    id: deliveryId,
-    event,
-    timestamp: new Date().toISOString(),
-    data,
-  }
-
   for (const webhook of webhooks) {
+    const deliveryId = nanoid(16)
+    const payload: WebhookPayload = {
+      id: deliveryId,
+      event,
+      timestamp: new Date().toISOString(),
+      data,
+    }
+
     const formatted = formatPayload(payload, webhook.template)
     const bodyStr = JSON.stringify(formatted)
     const signature = signPayload(bodyStr, webhook.secret)
@@ -165,5 +166,5 @@ export async function sendTestPing(
   const bodyStr = JSON.stringify(formatted)
   const signature = signPayload(bodyStr, webhook.secret)
 
-  return deliverWithRetry(webhook.url, bodyStr, signature, 'ping', deliveryId, 1)
+  return deliverWithRetry(webhook.url, bodyStr, signature, payload.event, deliveryId, 1)
 }

@@ -41,7 +41,8 @@ searchRouter.get('/', async (req, res, next) => {
       return
     }
 
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100)
+    const rawLimit = parseInt(req.query.limit as string ?? '', 10)
+    const limit = Math.min(Number.isNaN(rawLimit) ? 20 : Math.max(1, rawLimit), 100)
     const label = (req.query.label as string || '').trim() || null
     const knowledgeOnly = req.query.knowledgeOnly === 'true'
     const compact = req.query.compact === 'true'
@@ -61,6 +62,7 @@ searchRouter.get('/', async (req, res, next) => {
 
     // 3. Merge + recency boost
     let results: SearchHit[]
+    let effectiveMode = mode
     if (mode === 'hybrid' && textResults.length > 0 && semanticResults.length > 0) {
       results = mergeWithRRF(textResults, semanticResults) // recency applied inside RRF
     } else if (mode === 'semantic') {
@@ -69,6 +71,7 @@ searchRouter.get('/', async (req, res, next) => {
     } else {
       results = applyRecencyBoost(textResults)
       results.sort((a, b) => b.score - a.score)
+      if (mode === 'hybrid') effectiveMode = 'text'  // semantic was empty, fell back
     }
 
     // 4. Tier boost: knowledge items get score premium
@@ -86,7 +89,7 @@ searchRouter.get('/', async (req, res, next) => {
 
     res.json({
       count: finalResults.length,
-      mode,
+      mode: effectiveMode,
       embeddingsEnabled: embeddingsAvailable,
       results: finalResults,
     })

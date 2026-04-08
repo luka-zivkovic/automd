@@ -286,7 +286,7 @@ export const useDocumentStore = create<DocumentStore>()(
           const derived = deriveState(prev, idCache)
 
           set((state) => {
-            state._future = [...get()._future, markdown]
+            state._future = [...state._future, markdown]
             state._history = newHistory
             state.markdown = prev
             state.ast = derived.ast
@@ -308,7 +308,7 @@ export const useDocumentStore = create<DocumentStore>()(
           const derived = deriveState(next, idCache)
 
           set((state) => {
-            state._history = [...get()._history, markdown]
+            state._history = [...state._history, markdown]
             state._future = newFuture
             state.markdown = next
             state.ast = derived.ast

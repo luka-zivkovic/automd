@@ -122,7 +122,8 @@ export class VectorStore {
 
       if (!row) return false
       if (row.provider !== this.providerName) return true
-      if (row.dimensions != null && row.dimensions !== this.dimensions) return true
+      // Treat NULL dimensions (pre-migration rows) as a mismatch — safer to recreate
+      if (row.dimensions == null || row.dimensions !== this.dimensions) return true
       return false
     } catch {
       return false

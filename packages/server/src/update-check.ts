@@ -27,7 +27,7 @@ function getCheckInterval(): number {
 }
 
 function isNewerVersion(latest: string, current: string): boolean {
-  const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number)
+  const parse = (v: string) => v.replace(/^v/, '').replace(/[-+].*/, '').split('.').map(Number)
   const [lMaj, lMin = 0, lPat = 0] = parse(latest)
   const [cMaj, cMin = 0, cPat = 0] = parse(current)
   if (lMaj !== cMaj) return lMaj > cMaj

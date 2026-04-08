@@ -101,6 +101,15 @@ function hashApiKey(key: string): string {
   return crypto.createHash('sha256').update(key).digest('hex')
 }
 
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex')
+}
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
+}
+
 // ─── Status Checks ──────────────────────────────────────────────────────
 
 export function isSetupComplete(): boolean {
@@ -131,7 +140,7 @@ export function createAdmin(email: string, password: string): { token: string; e
   const token = generateToken()
   const now = Date.now()
   const expiresAt = now + SESSION_TTL_MS
-  auth.sessions.push({ token, createdAt: now, expiresAt })
+  auth.sessions.push({ token: hashToken(token), createdAt: now, expiresAt })
 
   writeAuth(auth)
   return { token, expiresAt }
@@ -146,7 +155,7 @@ export function login(email: string, password: string): { token: string; expires
   if (auth.admin.email !== email.toLowerCase().trim()) return null
 
   const hash = hashPassword(password, auth.admin.salt)
-  if (hash !== auth.admin.passwordHash) return null
+  if (!safeCompare(hash, auth.admin.passwordHash)) return null
 
   // Clean expired sessions while we're here
   const now = Date.now()
@@ -154,7 +163,7 @@ export function login(email: string, password: string): { token: string; expires
 
   const token = generateToken()
   const expiresAt = now + SESSION_TTL_MS
-  auth.sessions.push({ token, createdAt: now, expiresAt })
+  auth.sessions.push({ token: hashToken(token), createdAt: now, expiresAt })
 
   writeAuth(auth)
   return { token, expiresAt }
@@ -162,7 +171,8 @@ export function login(email: string, password: string): { token: string; expires
 
 export function logout(token: string): void {
   const auth = readAuth()
-  auth.sessions = auth.sessions.filter((s) => s.token !== token)
+  const tokenHash = hashToken(token)
+  auth.sessions = auth.sessions.filter((s) => !safeCompare(s.token, tokenHash))
   writeAuth(auth)
 }
 
@@ -178,7 +188,8 @@ export function validateToken(token: string): boolean {
   if (!token) return false
   const auth = readAuth()
   const now = Date.now()
-  const session = auth.sessions.find((s) => s.token === token && s.expiresAt > now)
+  const tokenHash = hashToken(token)
+  const session = auth.sessions.find((s) => safeCompare(s.token, tokenHash) && s.expiresAt > now)
   return !!session
 }
 
@@ -186,7 +197,7 @@ export function validateApiKey(key: string): boolean {
   if (!key) return false
   const auth = readAuth()
   const keyHash = hashApiKey(key)
-  return auth.apiKeys.some((k) => k.keyHash === keyHash)
+  return auth.apiKeys.some((k) => safeCompare(k.keyHash, keyHash))
 }
 
 /** Validate either a session token or API key */

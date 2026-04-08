@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import { useDocumentStore } from '@/store/document-store'
 
 export function useFileImport() {
-  const setMarkdown = useDocumentStore((s) => s.setMarkdown)
   const reparseFromMarkdown = useDocumentStore((s) => s.reparseFromMarkdown)
 
   const importFile = useCallback(() => {
@@ -13,18 +12,16 @@ export function useFileImport() {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
       const text = await file.text()
-      setMarkdown(text)
       reparseFromMarkdown(text)
     }
     input.click()
-  }, [setMarkdown, reparseFromMarkdown])
+  }, [reparseFromMarkdown])
 
   const importFromText = useCallback(
     (text: string) => {
-      setMarkdown(text)
       reparseFromMarkdown(text)
     },
-    [setMarkdown, reparseFromMarkdown]
+    [reparseFromMarkdown]
   )
 
   return { importFile, importFromText }

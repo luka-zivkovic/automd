@@ -315,8 +315,12 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ itemId, title }) => {
     try {
+      // Sanitize title — strip newlines and limit length
+      const safeTitle = title.replace(/[\r\n]/g, ' ').trim().slice(0, 200)
+      if (!safeTitle) return errorResponse(new Error('Column title cannot be empty'))
+
       const item = await api.getFile(itemId)
-      const newMarkdown = item.markdown.trimEnd() + `\n\n# ${title}\n\n`
+      const newMarkdown = item.markdown.trimEnd() + `\n\n# ${safeTitle}\n\n`
       const result = await api.updateFile(itemId, { markdown: newMarkdown })
       return json(result)
     } catch (err) {
@@ -376,10 +380,10 @@ export function registerTools(server: McpServer) {
     try {
       const item = await api.getFile(itemId)
       const task = item.columns
-        .flatMap((c: ApiColumn) => c.tasks)
+        .flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
         .find((t: ApiTask) => t.id === taskId)
 
-      if (!task) return text('Task not found')
+      if (!task) return errorResponse(new Error('Task not found'))
 
       const metadata = { ...task.metadata }
       if (priority !== undefined) metadata.priority = priority
@@ -506,8 +510,9 @@ export function registerTools(server: McpServer) {
       assignee: z.string().optional().describe('Filter by assignee (without @)'),
       label: z.string().optional().describe('Filter by label (without #)'),
       checked: z.boolean().optional().describe('Filter by completion status'),
+      limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, assignee, label, checked }) => {
+  }, async ({ query, assignee, label, checked, limit }) => {
     try {
       const items = await api.listFiles()
       const results: Array<{
@@ -560,10 +565,12 @@ export function registerTools(server: McpServer) {
         }
       }
 
-      // Sort by relevance descending
+      // Sort by relevance descending, then limit
       results.sort((a, b) => b.relevance - a.relevance)
+      const maxResults = limit ?? 20
+      const limitedResults = results.slice(0, maxResults)
 
-      return json({ count: results.length, results })
+      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
     } catch (err) {
       return errorResponse(err)
     }
@@ -576,8 +583,9 @@ export function registerTools(server: McpServer) {
       query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
       completedOnly: z.boolean().optional().describe('Only return completed tasks (default: false). Useful for finding learnings from done work.'),
+      limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, label, completedOnly }) => {
+  }, async ({ query, label, completedOnly, limit }) => {
     try {
       // Try hybrid search when embeddings are available and we have a text query
       if (query && await serverHasSearch()) {
@@ -667,10 +675,12 @@ export function registerTools(server: McpServer) {
         }
       }
 
-      // Sort by relevance descending
+      // Sort by relevance descending, then limit
       results.sort((a, b) => b.relevance - a.relevance)
+      const maxResults = limit ?? 20
+      const limitedResults = results.slice(0, maxResults)
 
-      return json({ count: results.length, results })
+      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
     } catch (err) {
       return errorResponse(err)
     }
@@ -840,7 +850,7 @@ export function registerTools(server: McpServer) {
       if (labels !== undefined) {
         // Fetch current task to preserve displayContent
         const item = await api.getFile(itemId)
-        const allTasks = item.columns.flatMap((c: ApiColumn) => c.tasks)
+        const allTasks = item.columns.flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
         const task = allTasks.find((t: ApiTask) => t.id === taskId)
         if (task) {
           await api.updateTask(itemId, taskId, {
@@ -864,8 +874,9 @@ export function registerTools(server: McpServer) {
     inputSchema: {
       query: z.string().optional().describe('Text to search for in knowledge items (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #)'),
+      limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, label }) => {
+  }, async ({ query, label, limit }) => {
     try {
       // Try hybrid search when embeddings are available and we have a text query
       if (query && await serverHasSearch()) {
@@ -949,10 +960,12 @@ export function registerTools(server: McpServer) {
         }
       }
 
-      // Sort by relevance descending
+      // Sort by relevance descending, then limit
       results.sort((a, b) => b.relevance - a.relevance)
+      const maxResults = limit ?? 20
+      const limitedResults = results.slice(0, maxResults)
 
-      return json({ count: results.length, results })
+      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
     } catch (err) {
       return errorResponse(err)
     }

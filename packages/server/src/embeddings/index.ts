@@ -97,11 +97,7 @@ export function queueEmbeddingUpdate(fileId: string, markdown: string, itemType?
 
 /** Remove all embeddings and relationships for a board. */
 export function removeEmbeddings(itemId: string): void {
-  if (!store) return
-  const removed = store.deleteByItemId(itemId)
-  if (removed > 0) {
-    console.log(`[embeddings] Removed ${removed} embeddings for item ${itemId}`)
-  }
+  // Always clean up relationships, even if embeddings are disabled
   try {
     const relRemoved = removeRelationshipsForItem(itemId)
     if (relRemoved > 0) {
@@ -109,6 +105,12 @@ export function removeEmbeddings(itemId: string): void {
     }
   } catch {
     // Relationships table may not exist yet on first run
+  }
+
+  if (!store) return
+  const removed = store.deleteByItemId(itemId)
+  if (removed > 0) {
+    console.log(`[embeddings] Removed ${removed} embeddings for item ${itemId}`)
   }
 }
 

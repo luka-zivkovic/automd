@@ -127,7 +127,13 @@ function BoardCard({ board }: { board: BoardSummary }) {
 
   function handleClick() {
     setActiveFile(board.fileId)
-    setActiveView('checklist')
+    const viewMap: Record<string, string> = {
+      board: 'kanban',
+      checklist: 'checklist',
+      page: 'editor',
+      knowledge: 'knowledge',
+    }
+    setActiveView((viewMap[board.itemType] || 'checklist') as any)
   }
 
   return (
@@ -182,12 +188,20 @@ function DashboardTaskRow({ dt, showDueDate = false }: {
   showDueDate?: boolean
 }) {
   const setActiveFile = useFilesStore((s) => s.setActiveFile)
+  const files = useFilesStore((s) => s.files)
   const setActiveView = useUiStore((s) => s.setActiveView)
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId)
 
   function handleClick() {
     setActiveFile(dt.fileId)
-    setActiveView('checklist')
+    const file = files.find((f) => f.id === dt.fileId)
+    const viewMap: Record<string, string> = {
+      board: 'kanban',
+      checklist: 'checklist',
+      page: 'editor',
+      knowledge: 'knowledge',
+    }
+    setActiveView((viewMap[file?.itemType ?? ''] || 'checklist') as any)
     setTimeout(() => setSelectedTaskId(dt.task.id), 50)
   }
 

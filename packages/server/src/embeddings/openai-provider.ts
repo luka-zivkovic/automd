@@ -62,7 +62,10 @@ async function embedBatch(config: OpenAIConfig, texts: string[]): Promise<Float3
 
   if (!response.ok) {
     const body = await response.text().catch(() => '')
-    throw new Error(`OpenAI embeddings API error (${response.status}): ${body}`)
+    // Sanitize error body — never expose raw upstream responses that may contain API keys
+    const safeBody = body.length > 200 ? body.slice(0, 200) + '...' : body
+    const sanitized = safeBody.replace(/sk-[a-zA-Z0-9]{20,}/g, 'sk-****')
+    throw new Error(`OpenAI embeddings API error (${response.status}): ${sanitized}`)
   }
 
   const json = await response.json() as {
