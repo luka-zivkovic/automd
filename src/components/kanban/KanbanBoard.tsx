@@ -91,32 +91,11 @@ export function KanbanBoard() {
     if (task) setActiveTask(task)
   }
 
-  function handleDragOver(event: DragOverEvent) {
-    const { active, over } = event
-    if (!over) return
-
-    const activeId = active.id as string
-    const overId = over.id as string
-
-    const sourceColumnId = findColumnId(activeId)
-    const targetColumnId = findColumnId(overId)
-
-    if (!sourceColumnId || !targetColumnId) return
-    if (sourceColumnId === targetColumnId) return
-
-    // Cross-column move during drag for visual feedback
-    const targetColumn = columns.find((c) => c.id === targetColumnId)
-    if (!targetColumn) return
-
-    let targetIndex: number
-    if (overId.startsWith('column-')) {
-      targetIndex = targetColumn.tasks.length
-    } else {
-      targetIndex = targetColumn.tasks.findIndex((t) => t.id === overId)
-      if (targetIndex === -1) targetIndex = targetColumn.tasks.length
-    }
-
-    moveTask(activeId, targetColumnId, targetIndex)
+  function handleDragOver(_event: DragOverEvent) {
+    // No-op: visual feedback is provided by DragOverlay.
+    // The actual move is committed in handleDragEnd.
+    // Previously this called moveTask() on every pointer move,
+    // causing full AST round-trips and broken undo history.
   }
 
   function handleDragEnd(event: DragEndEvent) {

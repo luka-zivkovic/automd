@@ -39,6 +39,10 @@ export function FileDropZone({ children }: FileDropZoneProps) {
       )
 
       if (mdFile) {
+        if (mdFile.size > 5 * 1024 * 1024) {
+          console.warn('[import] File too large (max 5 MB)')
+          return
+        }
         const text = await mdFile.text()
         importFromText(text)
       }

@@ -11,6 +11,10 @@ export function useFileImport() {
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
+      if (file.size > 5 * 1024 * 1024) {
+        console.warn('[import] File too large (max 5 MB)')
+        return
+      }
       const text = await file.text()
       reparseFromMarkdown(text)
     }

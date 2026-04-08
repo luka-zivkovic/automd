@@ -39,6 +39,8 @@ export type { ApiKeyEntry }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+let _authCache: AuthData | null = null
+
 // ─── File I/O ───────────────────────────────────────────────────────────
 
 function getAuthPath(): string {
@@ -51,6 +53,8 @@ function ensureDir() {
 }
 
 export function readAuth(): AuthData {
+  if (_authCache) return _authCache
+
   ensureDir()
   const authPath = getAuthPath()
   if (!fs.existsSync(authPath)) {
@@ -59,11 +63,12 @@ export function readAuth(): AuthData {
   try {
     const raw = fs.readFileSync(authPath, 'utf-8')
     const parsed = JSON.parse(raw)
-    return {
+    _authCache = {
       admin: parsed.admin ?? null,
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
       apiKeys: Array.isArray(parsed.apiKeys) ? parsed.apiKeys : [],
     }
+    return _authCache
   } catch (err) {
     console.error('[auth] Failed to read auth.json, resetting:', err)
     return { admin: null, sessions: [], apiKeys: [] }
@@ -77,6 +82,7 @@ function writeAuth(data: AuthData) {
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
     fs.renameSync(tmpPath, authPath)
+    _authCache = data
   } catch (err) {
     try { fs.unlinkSync(tmpPath) } catch { /* ignore */ }
     throw new Error(`Failed to write auth.json: ${err}`)

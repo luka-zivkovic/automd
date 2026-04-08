@@ -31,8 +31,8 @@ authRouter.post('/setup', async (req, res) => {
     res.status(400).json({ error: 'A valid email address is required.' })
     return
   }
-  if (!password || typeof password !== 'string' || password.length < 8) {
-    res.status(400).json({ error: 'Password must be at least 8 characters.' })
+  if (!password || typeof password !== 'string' || password.length < 8 || password.length > 1024) {
+    res.status(400).json({ error: 'Password must be between 8 and 1024 characters.' })
     return
   }
 
@@ -59,6 +59,10 @@ authRouter.post('/login', (req, res) => {
   const { email, password } = req.body
   if (!email || !password) {
     res.status(400).json({ error: 'Email and password are required.' })
+    return
+  }
+  if (typeof password !== 'string' || password.length > 1024) {
+    res.status(400).json({ error: 'Invalid credentials.' })
     return
   }
 

@@ -25,7 +25,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export function createApp() {
   const app = express()
-  app.use(cors())
+  const allowedOrigin = process.env.AUTOMD_CORS_ORIGIN || 'http://localhost:5173'
+  app.use(cors({ origin: allowedOrigin === '*' ? true : allowedOrigin }))
   app.use(express.json({ limit: '5mb' }))
 
   // Public endpoints (no auth required)
@@ -35,7 +36,7 @@ export function createApp() {
 
     res.json({
       status: 'ok',
-      storage: getStoragePath(),
+      storage: 'ok',
       authRequired: isSetupComplete() && !isAuthDisabled(),
       s3: getS3SyncStatus(),
       embeddings: getEmbeddingsStatus(),
