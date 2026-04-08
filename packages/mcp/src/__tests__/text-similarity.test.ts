@@ -55,8 +55,8 @@ describe('jaccardSimilarity', () => {
     expect(jaccardSimilarity(a, b)).toBeCloseTo(1 / 3, 2)
   })
 
-  it('should return 1.0 for two empty sets', () => {
-    expect(jaccardSimilarity(new Set(), new Set())).toBe(1.0)
+  it('should return 0.0 for two empty sets', () => {
+    expect(jaccardSimilarity(new Set(), new Set())).toBe(0.0)
   })
 
   it('should return 0.0 when one set is empty', () => {

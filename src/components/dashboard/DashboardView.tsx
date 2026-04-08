@@ -202,7 +202,7 @@ function DashboardTaskRow({ dt, showDueDate = false }: {
       knowledge: 'knowledge',
     }
     setActiveView((viewMap[file?.itemType ?? ''] || 'checklist') as any)
-    setTimeout(() => setSelectedTaskId(dt.task.id), 50)
+    setSelectedTaskId(dt.task.id)
   }
 
   return (

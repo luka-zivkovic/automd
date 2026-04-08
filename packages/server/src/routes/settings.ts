@@ -57,7 +57,7 @@ settingsRouter.put('/', async (req, res, next) => {
 
         if (emb.openai) {
           // Only update apiKey if it's not a masked/sentinel value
-          if (emb.openai.apiKey !== undefined && !isMaskedValue(emb.openai.apiKey)) {
+          if (emb.openai.apiKey !== undefined && emb.openai.apiKey !== '' && !isMaskedValue(emb.openai.apiKey)) {
             settings.embeddings.openai.apiKey = emb.openai.apiKey
           }
           if (emb.openai.baseUrl !== undefined) {

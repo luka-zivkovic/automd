@@ -202,8 +202,10 @@ export class VectorStore {
   }
 
   deleteById(id: string): void {
-    this.db.prepare('DELETE FROM embeddings WHERE id = ?').run(id)
-    this.db.prepare('DELETE FROM embedding_meta WHERE id = ?').run(id)
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM embeddings WHERE id = ?').run(id)
+      this.db.prepare('DELETE FROM embedding_meta WHERE id = ?').run(id)
+    })()
   }
 
   listIdsByItemId(itemId: string): string[] {

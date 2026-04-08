@@ -148,7 +148,7 @@ export function registerTools(server: McpServer) {
     inputSchema: { itemId: z.string().describe('The item ID') },
   }, async ({ itemId }) => {
     try {
-      const item = await api.getFile(itemId)
+      const item = await api.getFile(itemId, 'L2')
       return text(item.markdown)
     } catch (err) {
       return errorResponse(err)
@@ -237,7 +237,7 @@ export function registerTools(server: McpServer) {
   }, async ({ itemId, taskId, content, agentName }) => {
     try {
       let finalContent = content
-      if (agentName && finalContent) {
+      if (agentName && finalContent !== undefined) {
         finalContent = finalContent.replace(/\s*built-by:[\w-]+/gi, '') + ` built-by:${agentName}`
       }
       const result = await api.updateTask(itemId, taskId, {
@@ -252,7 +252,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('toggle_task', {
     title: 'Toggle Task',
-    description: 'Toggle a task between checked [ ] and unchecked [x]. Only applies to tasks with checkbox prefixes. Sets completedAt on check, clears on uncheck.',
+    description: 'Toggle a task between unchecked [ ] and checked [x]. Only applies to tasks with checkbox prefixes. Sets completedAt on check, clears on uncheck.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
@@ -1059,6 +1059,11 @@ export function registerTools(server: McpServer) {
             })
           }
 
+          if (!result?.taskId) {
+            errors.push(`Failed to create task for: ${item.content.slice(0, 50)}`)
+            continue
+          }
+
           results.push({ content: item.content, taskId: result.taskId })
 
           // Add newly created item to existing knowledge so subsequent items in this batch can dedup against it
@@ -1168,7 +1173,7 @@ export function registerTools(server: McpServer) {
       for (const column of item.columns as ApiColumn[]) {
         if (columnId && column.id !== columnId) continue
 
-        for (const task of column.tasks) {
+        for (const task of flattenApiTasks(column.tasks)) {
           if (!task.checked) continue
           if (task.metadata?.archived) continue
 

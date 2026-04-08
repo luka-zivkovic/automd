@@ -378,12 +378,19 @@ export function useServerSync() {
               description: result.error,
               action: {
                 label: 'Retry',
-                onClick: () => {
+                onClick: async () => {
                   const md = useDocumentStore.getState().markdown
                   const fid = useFilesStore.getState().activeFileId
                   if (fid) {
+                    // Fetch current version for ETag before retrying
+                    const current = await apiFetch<{ updatedAt: number }>(`/files/${fid}`)
+                    const headers: Record<string, string> = {}
+                    if (current.ok && current.data.updatedAt) {
+                      headers['If-Match'] = `"${current.data.updatedAt}"`
+                    }
                     apiFetch(`/files/${fid}`, {
                       method: 'PUT',
+                      headers,
                       body: JSON.stringify({ markdown: md, actor: useUserStore.getState().username || 'Anonymous' }),
                     })
                   }

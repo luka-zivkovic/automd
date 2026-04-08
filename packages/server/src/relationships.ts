@@ -72,35 +72,37 @@ export function addRelationship(
 ): { id: string; created: boolean } {
   const d = getDb()
 
-  // Check for duplicate (same source, target, type)
-  const existing = d.prepare(`
-    SELECT id FROM relationships
-    WHERE source_item_id = ? AND source_task_id = ?
-      AND target_item_id = ? AND target_task_id = ?
-      AND relation_type = ?
-  `).get(sourceItemId, sourceTaskId, targetItemId, targetTaskId, relationType) as { id: string } | undefined
-
-  if (existing) return { id: existing.id, created: false }
-
-  // Also check reverse for bidirectional types
-  if (relationType === 'related-to') {
-    const reverse = d.prepare(`
+  return d.transaction(() => {
+    // Check for duplicate (same source, target, type)
+    const existing = d.prepare(`
       SELECT id FROM relationships
       WHERE source_item_id = ? AND source_task_id = ?
         AND target_item_id = ? AND target_task_id = ?
         AND relation_type = ?
-    `).get(targetItemId, targetTaskId, sourceItemId, sourceTaskId, relationType) as { id: string } | undefined
+    `).get(sourceItemId, sourceTaskId, targetItemId, targetTaskId, relationType) as { id: string } | undefined
 
-    if (reverse) return { id: reverse.id, created: false }
-  }
+    if (existing) return { id: existing.id, created: false }
 
-  const id = crypto.randomUUID()
-  d.prepare(`
-    INSERT INTO relationships (id, source_item_id, source_task_id, target_item_id, target_task_id, relation_type, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, sourceItemId, sourceTaskId, targetItemId, targetTaskId, relationType, Date.now(), createdBy)
+    // Also check reverse for bidirectional types
+    if (relationType === 'related-to') {
+      const reverse = d.prepare(`
+        SELECT id FROM relationships
+        WHERE source_item_id = ? AND source_task_id = ?
+          AND target_item_id = ? AND target_task_id = ?
+          AND relation_type = ?
+      `).get(targetItemId, targetTaskId, sourceItemId, sourceTaskId, relationType) as { id: string } | undefined
 
-  return { id, created: true }
+      if (reverse) return { id: reverse.id, created: false }
+    }
+
+    const id = crypto.randomUUID()
+    d.prepare(`
+      INSERT INTO relationships (id, source_item_id, source_task_id, target_item_id, target_task_id, relation_type, created_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, sourceItemId, sourceTaskId, targetItemId, targetTaskId, relationType, Date.now(), createdBy)
+
+    return { id, created: true }
+  })()
 }
 
 /** Get all relationships for a specific task (both directions). */

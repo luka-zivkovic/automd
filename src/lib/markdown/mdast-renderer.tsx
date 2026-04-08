@@ -161,15 +161,25 @@ function renderPhrasingNode(node: PhrasingContent, key: number): React.ReactNode
     case 'inlineCode':
       return <code key={key}>{node.value}</code>
 
-    case 'link':
+    case 'link': {
+      const href = node.url
+      if (href && /^(javascript|data):/i.test(href)) {
+        return <span key={key}>{renderInline(node.children)}</span>
+      }
       return (
-        <a key={key} href={node.url} target="_blank" rel="noopener noreferrer" title={node.title ?? undefined}>
+        <a key={key} href={href} target="_blank" rel="noopener noreferrer" title={node.title ?? undefined}>
           {renderInline(node.children)}
         </a>
       )
+    }
 
-    case 'image':
-      return <img key={key} src={node.url} alt={node.alt ?? ''} title={node.title ?? undefined} />
+    case 'image': {
+      const imgSrc = node.url
+      if (imgSrc && /^(javascript|data):/i.test(imgSrc)) {
+        return <span key={key}>{node.alt ?? ''}</span>
+      }
+      return <img key={key} src={imgSrc} alt={node.alt ?? ''} title={node.title ?? undefined} />
+    }
 
     case 'break':
       return <br key={key} />

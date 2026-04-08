@@ -92,7 +92,7 @@ function writeAuth(data: AuthData) {
 // ─── Hashing ────────────────────────────────────────────────────────────
 
 function hashPassword(password: string, salt: string): string {
-  return crypto.scryptSync(password, salt, 64).toString('hex')
+  return crypto.scryptSync(password, salt, 64, { N: 65536, r: 8, p: 1 }).toString('hex')
 }
 
 function generateSalt(): string {
