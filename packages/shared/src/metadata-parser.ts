@@ -1,7 +1,7 @@
 import type { TaskMetadata } from './types.js'
 
-const ASSIGNEE_RE = /@(\w[\w-]*)/g
-const LABEL_RE = /#(\w[\w-]*)/g
+const ASSIGNEE_RE = /(?:^|\s)@(\w[\w-]*)/g
+const LABEL_RE = /(?:^|\s)#(\w[\w-]*)/g
 const DUE_DATE_RE = /due:(\d{4}-\d{2}-\d{2})/i
 const ESTIMATE_RE = /est:([\d.]+)h?/i
 const PRIORITY_RE = /priority:(high|medium|low)/i
@@ -40,19 +40,27 @@ export function parseMetadata(content: string): {
   for (const match of content.matchAll(ASSIGNEE_RE)) {
     metadata.assignees.push(match[1])
   }
+  metadata.assignees = [...new Set(metadata.assignees)]
 
   // Extract labels
   for (const match of content.matchAll(LABEL_RE)) {
     metadata.labels.push(match[1])
   }
+  metadata.labels = [...new Set(metadata.labels)]
 
   // Extract due date
   const dueMatch = content.match(DUE_DATE_RE)
-  if (dueMatch) metadata.dueDate = dueMatch[1]
+  if (dueMatch) {
+    const d = new Date(dueMatch[1])
+    if (!isNaN(d.getTime())) metadata.dueDate = dueMatch[1]
+  }
 
   // Extract estimate
   const estMatch = content.match(ESTIMATE_RE)
-  if (estMatch) metadata.estimate = parseFloat(estMatch[1])
+  if (estMatch) {
+    const val = parseFloat(estMatch[1])
+    if (isFinite(val) && val > 0 && val <= 9999) metadata.estimate = val
+  }
 
   // Extract priority
   const prioMatch = content.match(PRIORITY_RE)
@@ -66,14 +74,17 @@ export function parseMetadata(content: string): {
   if (builtMatch) metadata.builtBy = builtMatch[1]
 
   // Extract archived flag
-  if (ARCHIVED_RE.test(content)) metadata.archived = true
+  if (content.match(ARCHIVED_RE)) metadata.archived = true
 
   // Extract completed-at date
   const completedMatch = content.match(COMPLETED_AT_RE)
-  if (completedMatch) metadata.completedAt = completedMatch[1]
+  if (completedMatch) {
+    const d = new Date(completedMatch[1])
+    if (!isNaN(d.getTime())) metadata.completedAt = completedMatch[1]
+  }
 
   // Extract knowledge flag
-  if (KNOWLEDGE_RE.test(content)) metadata.knowledge = true
+  if (content.match(KNOWLEDGE_RE)) metadata.knowledge = true
 
   // Strip all tokens to get display content
   const displayContent = content

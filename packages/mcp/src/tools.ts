@@ -591,7 +591,13 @@ export function registerTools(server: McpServer) {
       if (query && await serverHasSearch()) {
         try {
           const searchResults = await api.search({ q: query, label: label ?? undefined, compact: true })
-          return json({ count: searchResults.count, results: searchResults.results, mode: searchResults.mode })
+          let filteredResults = searchResults.results
+          if (completedOnly) {
+            filteredResults = filteredResults.filter((r: any) => r.checked === true)
+          }
+          const maxResults = limit ?? 20
+          filteredResults = filteredResults.slice(0, maxResults)
+          return json({ count: filteredResults.length, total: searchResults.count, results: filteredResults, mode: searchResults.mode })
         } catch {
           // Fall through to legacy search
         }

@@ -16,6 +16,33 @@ import { withWriteLock } from '../write-lock.js'
 
 export const authRouter = Router()
 
+// Simple in-memory rate limiter for auth endpoints
+const loginAttempts = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+const RATE_LIMIT_MAX = 10 // max attempts per window
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = loginAttempts.get(ip)
+
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return true
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) return false
+  entry.count++
+  return true
+}
+
+// Clean up stale entries periodically
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, entry] of loginAttempts) {
+    if (now > entry.resetAt) loginAttempts.delete(ip)
+  }
+}, 5 * 60 * 1000) // every 5 minutes
+
 // Status — always public
 authRouter.get('/status', (_req, res) => {
   res.json({
@@ -26,6 +53,11 @@ authRouter.get('/status', (_req, res) => {
 
 // Setup — create admin (only works once)
 authRouter.post('/setup', async (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown'
+  if (!checkRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Too many attempts. Please try again later.' })
+    return
+  }
   const { email, password } = req.body
   if (!email || typeof email !== 'string' || !/^.+@.+\..+$/.test(email.trim())) {
     res.status(400).json({ error: 'A valid email address is required.' })
@@ -56,6 +88,11 @@ authRouter.post('/setup', async (req, res) => {
 
 // Login
 authRouter.post('/login', (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown'
+  if (!checkRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Too many login attempts. Please try again later.' })
+    return
+  }
   const { email, password } = req.body
   if (!email || !password) {
     res.status(400).json({ error: 'Email and password are required.' })
