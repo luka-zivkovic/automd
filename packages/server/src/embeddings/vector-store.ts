@@ -10,7 +10,7 @@ import * as sqliteVec from 'sqlite-vec'
 import path from 'node:path'
 import { getAutomdDir } from '../config.js'
 
-export type ContentTier = 'knowledge' | 'task' | 'page'
+export type ContentTier = 'knowledge' | 'learning' | 'task' | 'page'
 
 export interface SearchResult {
   id: string

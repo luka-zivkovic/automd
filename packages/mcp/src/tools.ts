@@ -534,7 +534,7 @@ export function registerTools(server: McpServer) {
           for (const column of item.columns) {
             for (const task of flattenApiTasks(column.tasks)) {
               if (assignee && !task.metadata.assignees.includes(assignee)) continue
-              if (label && !task.metadata.labels.includes(label)) continue
+              if (label && !task.metadata.labels.some(l => l.toLowerCase() === label.toLowerCase())) continue
               if (checked !== undefined && task.checked !== checked) continue
 
               let relevance = 1.0
@@ -643,7 +643,7 @@ export function registerTools(server: McpServer) {
               }
 
               if (label) {
-                const hasLabel = task.metadata.labels.includes(label)
+                const hasLabel = task.metadata.labels.some(l => l.toLowerCase() === label.toLowerCase())
                 const hasInlineLabelTag = searchable.toLowerCase().includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
                   (t: string) => t.toLowerCase() === label.toLowerCase()
@@ -934,7 +934,7 @@ export function registerTools(server: McpServer) {
 
               // Apply label filter (including frontmatter tags)
               if (label) {
-                const hasLabel = task.metadata?.labels?.includes(label)
+                const hasLabel = task.metadata?.labels?.some(l => l.toLowerCase() === label.toLowerCase())
                 const hasInlineTag = task.learnings?.toLowerCase().includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
                   (t: string) => t.toLowerCase() === label.toLowerCase()

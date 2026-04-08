@@ -2,6 +2,18 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { api } from '../api-client.js'
 
+function errorMessages(itemId: string, err: unknown) {
+  return {
+    messages: [{
+      role: 'user' as const,
+      content: {
+        type: 'text' as const,
+        text: `Error loading item ${itemId}: ${err instanceof Error ? err.message : String(err)}. Please verify the item ID exists and the server is running.`,
+      },
+    }],
+  }
+}
+
 export function registerPlanningPrompts(server: McpServer) {
   server.registerPrompt('sprint_planning', {
     description: 'Help plan next sprint from backlog',
@@ -10,19 +22,20 @@ export function registerPlanningPrompts(server: McpServer) {
       sprintCapacityHours: z.number().optional().describe('Total sprint capacity in hours'),
     },
   }, async ({ itemId, sprintCapacityHours }) => {
-    const board = await api.getFile(itemId)
-    const boardJson = JSON.stringify(board, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const boardJson = JSON.stringify(board, null, 2)
 
-    const capacityNote = sprintCapacityHours
-      ? `The team has ${sprintCapacityHours} hours of capacity for this sprint.`
-      : 'No specific capacity constraint was provided.'
+      const capacityNote = sprintCapacityHours
+        ? `The team has ${sprintCapacityHours} hours of capacity for this sprint.`
+        : 'No specific capacity constraint was provided.'
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `You are a sprint planning assistant for the board "${board.name}". Help plan the next sprint from the following board data:
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `You are a sprint planning assistant for the board "${board.name}". Help plan the next sprint from the following board data:
 
 Board data:
 ${boardJson}
@@ -38,8 +51,11 @@ Please help with sprint planning by:
 6. Recommending a realistic sprint scope
 
 Provide specific tool calls the agent can execute to move tasks into the sprint and update their metadata.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 
@@ -50,18 +66,19 @@ Provide specific tool calls the agent can execute to move tasks into the sprint 
       columnId: z.string().optional().describe('Optional column ID to scope estimation'),
     },
   }, async ({ itemId, columnId }) => {
-    const board = await api.getFile(itemId)
-    const allTasks = board.columns.flatMap((c: { id: string; tasks: unknown[] }) =>
-      columnId ? (c.id === columnId ? c.tasks : []) : c.tasks
-    )
-    const tasksJson = JSON.stringify(allTasks, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const allTasks = board.columns.flatMap((c: { id: string; tasks: unknown[] }) =>
+        columnId ? (c.id === columnId ? c.tasks : []) : c.tasks
+      )
+      const tasksJson = JSON.stringify(allTasks, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `Estimate effort for tasks on board "${board.name}"${columnId ? ' (filtered column)' : ''}:
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `Estimate effort for tasks on board "${board.name}"${columnId ? ' (filtered column)' : ''}:
 
 Tasks:
 ${tasksJson}
@@ -73,8 +90,11 @@ For each task without an estimate:
 4. Compare with similar estimated tasks for consistency
 
 Provide update_task_metadata tool calls to set estimates.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 
@@ -84,15 +104,16 @@ Provide update_task_metadata tool calls to set estimates.`,
       itemId: z.string().describe('The item ID to analyze'),
     },
   }, async ({ itemId }) => {
-    const board = await api.getFile(itemId)
-    const boardJson = JSON.stringify(board, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const boardJson = JSON.stringify(board, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `Analyze dependencies between tasks on board "${board.name}":
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `Analyze dependencies between tasks on board "${board.name}":
 
 Board data:
 ${boardJson}
@@ -105,8 +126,11 @@ Please:
 5. Highlight critical path items that would block the most work if delayed
 
 Present as a dependency graph and recommended execution sequence.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 }

@@ -54,6 +54,7 @@ export function initS3Sync(): void {
   })
 
   console.log(`[s3-sync] Enabled — bucket: ${bucket}, prefix: "${prefix}"`)
+  console.warn('[s3-sync] WARNING: S3 sync is designed for single-instance deployments only. Running multiple server instances against the same S3 bucket will cause data loss due to concurrent write conflicts. Use a single instance or implement external coordination.')
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────

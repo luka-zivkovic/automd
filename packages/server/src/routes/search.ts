@@ -14,6 +14,7 @@ import { semanticSearch, isEmbeddingsEnabled } from '../embeddings/index.js'
 import { classifyTask } from '../embeddings/indexer.js'
 import { getRelationships } from '../relationships.js'
 import type { Task } from '@automd/shared'
+import { tokenizeForSearch } from '@automd/shared'
 import type { ContentTier } from '../embeddings/vector-store.js'
 
 export const searchRouter = Router()
@@ -99,11 +100,6 @@ searchRouter.get('/', async (req, res, next) => {
 })
 
 // ─── Text Search (BM25-lite) ────────────────────────────────────────────
-
-/** Tokenize text into lowercase words, stripping punctuation. */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean)
-}
 
 /** BM25 field weights — higher = more important. */
 const FIELD_WEIGHTS = {
@@ -193,7 +189,7 @@ function bm25Score(
 }
 
 function textSearch(query: string, labelFilter: string | null, knowledgeOnly: boolean): SearchHit[] {
-  const queryTerms = tokenize(query)
+  const queryTerms = tokenizeForSearch(query)
   if (queryTerms.length === 0) return []
 
   const files = storage.listFiles()
@@ -226,11 +222,11 @@ function textSearch(query: string, labelFilter: string | null, knowledgeOnly: bo
 
       const col = columns.find((c) => c.tasks.some((t) => t.id === task.id))
       const fields: Record<string, string[]> = {
-        title: tokenize(task.displayContent),
-        learnings: tokenize(task.learnings ?? ''),
-        tags: tokenize(allLabels.join(' ')),
-        description: tokenize(task.description ?? ''),
-        ac: tokenize(task.acceptanceCriteria ?? ''),
+        title: tokenizeForSearch(task.displayContent),
+        learnings: tokenizeForSearch(task.learnings ?? ''),
+        tags: tokenizeForSearch(allLabels.join(' ')),
+        description: tokenizeForSearch(task.description ?? ''),
+        ac: tokenizeForSearch(task.acceptanceCriteria ?? ''),
       }
 
       docs.push({
@@ -393,6 +389,7 @@ function mergeWithRRF(textHits: SearchHit[], semanticHits: SearchHit[]): SearchH
 
 const TIER_BOOST: Record<ContentTier, number> = {
   knowledge: 1.2,  // Premium: curated knowledge items get 20% boost
+  learning: 1.1,   // Moderate: tasks with learnings get 10% boost
   task: 1.0,       // Neutral: regular tasks
   page: 1.0,       // Neutral: page sections
 }

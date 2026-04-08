@@ -63,13 +63,16 @@ Description paragraph — background, context, the "why".
 - Use \`synthesize_topic\` to assemble context briefs about a topic
 
 ## Available Tools
-- Item management: list_items, get_item, create_item (supports board/checklist/page/knowledge types), delete_item, rename_item
+- Item management: list_items, get_item, get_item_markdown, create_item (supports board/checklist/page/knowledge types), delete_item, rename_item
+- Column management: add_column, rename_column, delete_column
 - Task management: add_task, update_task, toggle_task, move_task, delete_task
 - Metadata: update_task_metadata, update_acceptance_criteria, update_learnings
 - Knowledge: add_knowledge, update_knowledge, find_knowledge, synthesize_topic, import_memories
-- Search: search_tasks, search_context
+- Search: search_tasks, search_context, get_working_context
+- Relationships: link_tasks, get_related
 - Bulk: bulk_update_tasks, archive_completed_tasks
 - Projects: list_projects, get_project_items, create_project
+- Tags: list_tags
 
 Always use the most specific tool for the job. Prefer knowledge tools for knowledge management over raw task tools.`,
         },

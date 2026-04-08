@@ -211,6 +211,23 @@ export function validateCredential(credential: string): boolean {
   return validateToken(credential) || validateApiKey(credential)
 }
 
+/** Return a display identity for a valid credential, or null if invalid */
+export function getIdentityFromCredential(credential: string): string | null {
+  if (!credential) return null
+  const auth = readAuth()
+  const now = Date.now()
+
+  const tokenHash = hashToken(credential)
+  const session = auth.sessions.find((s) => safeCompare(s.token, tokenHash) && s.expiresAt > now)
+  if (session && auth.admin) return auth.admin.email
+
+  const keyHash = hashApiKey(credential)
+  const apiKey = auth.apiKeys.find((k) => safeCompare(k.keyHash, keyHash))
+  if (apiKey) return `api:${apiKey.name}`
+
+  return null
+}
+
 // ─── API Key Management ─────────────────────────────────────────────────
 
 export function createApiKey(name: string): { id: string; name: string; keyPrefix: string; fullKey: string; createdAt: number } {

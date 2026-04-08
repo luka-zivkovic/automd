@@ -2,6 +2,18 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { api } from '../api-client.js'
 
+function errorMessages(itemId: string, err: unknown) {
+  return {
+    messages: [{
+      role: 'user' as const,
+      content: {
+        type: 'text' as const,
+        text: `Error loading item ${itemId}: ${err instanceof Error ? err.message : String(err)}. Please verify the item ID exists and the server is running.`,
+      },
+    }],
+  }
+}
+
 export function registerOperationsPrompts(server: McpServer) {
   server.registerPrompt('triage_tasks', {
     description: 'Review uncategorized tasks and suggest columns/priorities',
@@ -9,15 +21,16 @@ export function registerOperationsPrompts(server: McpServer) {
       itemId: z.string().describe('The item ID to triage'),
     },
   }, async ({ itemId }) => {
-    const board = await api.getFile(itemId)
-    const boardJson = JSON.stringify(board, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const boardJson = JSON.stringify(board, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `You are a task triage assistant for the board "${board.name}". Review the following board data and suggest improvements:
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `You are a task triage assistant for the board "${board.name}". Review the following board data and suggest improvements:
 
 Board data:
 ${boardJson}
@@ -30,8 +43,11 @@ Please analyze the tasks and provide:
 5. Tasks that might be duplicates or could be merged
 
 For each suggestion, explain your reasoning and provide the specific tool calls needed to implement the changes.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 
@@ -41,15 +57,16 @@ For each suggestion, explain your reasoning and provide the specific tool calls 
       itemId: z.string().describe('The item ID to summarize'),
     },
   }, async ({ itemId }) => {
-    const board = await api.getFile(itemId)
-    const boardJson = JSON.stringify(board, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const boardJson = JSON.stringify(board, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `You are a standup meeting facilitator for the board "${board.name}". Generate a daily standup summary from the following board data:
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `You are a standup meeting facilitator for the board "${board.name}". Generate a daily standup summary from the following board data:
 
 Board data:
 ${boardJson}
@@ -61,8 +78,11 @@ Please provide a concise standup report covering:
 4. **Key Metrics** - Total tasks, completion rate, overdue count
 
 Format the summary in a way that would be useful for a quick team sync.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 
@@ -72,15 +92,16 @@ Format the summary in a way that would be useful for a quick team sync.`,
       itemId: z.string().describe('The item ID to retrospect on'),
     },
   }, async ({ itemId }) => {
-    const board = await api.getFile(itemId)
-    const boardJson = JSON.stringify(board, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const boardJson = JSON.stringify(board, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `Run a retrospective on board "${board.name}":
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `Run a retrospective on board "${board.name}":
 
 Board data:
 ${boardJson}
@@ -92,8 +113,11 @@ Analyze completed tasks and the board state to provide:
 4. **Learnings to Capture** — Key decisions and patterns worth preserving as knowledge items
 
 For each learning worth capturing, provide add_knowledge tool calls for new knowledge items, or update_learnings tool calls to attach learnings to existing tasks.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 
@@ -103,15 +127,16 @@ For each learning worth capturing, provide add_knowledge tool calls for new know
       itemId: z.string().describe('The item ID to clean up'),
     },
   }, async ({ itemId }) => {
-    const board = await api.getFile(itemId)
-    const boardJson = JSON.stringify(board, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const boardJson = JSON.stringify(board, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `Clean up board "${board.name}":
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `Clean up board "${board.name}":
 
 Board data:
 ${boardJson}
@@ -124,8 +149,11 @@ Please identify and suggest fixes for:
 5. **Column balance** — Columns with too many tasks that should be split or reorganized
 
 Provide the specific tool calls to implement each cleanup action.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 
@@ -136,15 +164,16 @@ Provide the specific tool calls to implement each cleanup action.`,
       context: z.string().optional().describe('What the handoff is for (e.g. "new team member", "agent sync")'),
     },
   }, async ({ itemId, context }) => {
-    const board = await api.getFile(itemId)
-    const boardJson = JSON.stringify(board, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const boardJson = JSON.stringify(board, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `Generate a handoff summary for board "${board.name}"${context ? ` (${context})` : ''}:
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `Generate a handoff summary for board "${board.name}"${context ? ` (${context})` : ''}:
 
 Board data:
 ${boardJson}
@@ -158,8 +187,11 @@ Create a comprehensive handoff document covering:
 6. **Context & Conventions** — Board vocabulary, labeling patterns, workflow norms
 
 Format as a self-contained briefing that gives full context without needing to read the entire board.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 }

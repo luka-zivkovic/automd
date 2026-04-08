@@ -2,6 +2,18 @@ import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { api } from '../api-client.js'
 
+function errorMessages(itemId: string, err: unknown) {
+  return {
+    messages: [{
+      role: 'user' as const,
+      content: {
+        type: 'text' as const,
+        text: `Error loading item ${itemId}: ${err instanceof Error ? err.message : String(err)}. Please verify the item ID exists and the server is running.`,
+      },
+    }],
+  }
+}
+
 export function registerWorkflowPrompts(server: McpServer) {
   server.registerPrompt('decompose_task', {
     description: 'Break down a complex task into subtasks with estimates',
@@ -10,17 +22,27 @@ export function registerWorkflowPrompts(server: McpServer) {
       taskId: z.string().describe('The task ID to decompose'),
     },
   }, async ({ itemId, taskId }) => {
-    const board = await api.getFile(itemId)
-    const allTasks = board.columns.flatMap((c: { tasks: unknown[] }) => c.tasks)
-    const task = allTasks.find((t: { id: string }) => t.id === taskId)
-    const taskJson = JSON.stringify(task, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const allTasks = board.columns.flatMap((c: any) => {
+        const result: any[] = []
+        const stack = [...c.tasks]
+        while (stack.length) {
+          const t = stack.pop()
+          result.push(t)
+          if (t.children) stack.push(...t.children)
+        }
+        return result
+      })
+      const task = allTasks.find((t: { id: string }) => t.id === taskId)
+      const taskJson = JSON.stringify(task, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `Decompose this task into actionable subtasks:
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `Decompose this task into actionable subtasks:
 
 Task:
 ${taskJson}
@@ -32,8 +54,11 @@ Please:
 4. Suggest which subtasks could be parallelized
 
 Subtasks are GFM checkboxes (\`- [ ] text\`) inside the parent task's content. Use update_task to add them to the parent task's body, or use add_task to create standalone tasks.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 
@@ -44,17 +69,27 @@ Subtasks are GFM checkboxes (\`- [ ] text\`) inside the parent task's content. U
       taskId: z.string().describe('The task ID'),
     },
   }, async ({ itemId, taskId }) => {
-    const board = await api.getFile(itemId)
-    const allTasks = board.columns.flatMap((c: { tasks: unknown[] }) => c.tasks)
-    const task = allTasks.find((t: { id: string }) => t.id === taskId)
-    const taskJson = JSON.stringify(task, null, 2)
+    try {
+      const board = await api.getFile(itemId)
+      const allTasks = board.columns.flatMap((c: any) => {
+        const result: any[] = []
+        const stack = [...c.tasks]
+        while (stack.length) {
+          const t = stack.pop()
+          result.push(t)
+          if (t.children) stack.push(...t.children)
+        }
+        return result
+      })
+      const task = allTasks.find((t: { id: string }) => t.id === taskId)
+      const taskJson = JSON.stringify(task, null, 2)
 
-    return {
-      messages: [{
-        role: 'user' as const,
-        content: {
-          type: 'text' as const,
-          text: `Write clear, testable acceptance criteria for this task:
+      return {
+        messages: [{
+          role: 'user' as const,
+          content: {
+            type: 'text' as const,
+            text: `Write clear, testable acceptance criteria for this task:
 
 Task:
 ${taskJson}
@@ -66,8 +101,11 @@ Write acceptance criteria that are:
 4. Concise — one clear condition per line
 
 Provide the update_acceptance_criteria tool call with the criteria as newline-separated text.`,
-        },
-      }],
+          },
+        }],
+      }
+    } catch (err) {
+      return errorMessages(itemId, err)
     }
   })
 

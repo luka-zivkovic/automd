@@ -10,6 +10,7 @@ export interface SearchResult {
 
 // Simple regex to match markdown task lines: - [ ] or - [x]
 const TASK_LINE_RE = /^(\s*)-\s*\[([ xX])\]\s+(.+)$/
+const HEADING_TASK_RE = /^##\s+(.+)$/
 
 /**
  * Searches across all files in the files-store for tasks matching the query.
@@ -31,10 +32,12 @@ export function useGlobalSearch(query: string): SearchResult[] {
 
       const lines = file.markdown.split('\n')
       for (let i = 0; i < lines.length; i++) {
-        const match = TASK_LINE_RE.exec(lines[i])
-        if (!match) continue
+        const checkboxMatch = TASK_LINE_RE.exec(lines[i])
+        const headingMatch = !checkboxMatch ? HEADING_TASK_RE.exec(lines[i]) : null
 
-        const taskContent = match[3].trim()
+        const taskContent = checkboxMatch ? checkboxMatch[3].trim() : headingMatch ? headingMatch[1].trim() : null
+        if (!taskContent) continue
+
         if (taskContent.toLowerCase().includes(q)) {
           results.push({
             fileId: file.id,
