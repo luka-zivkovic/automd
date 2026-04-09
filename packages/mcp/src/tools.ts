@@ -116,10 +116,23 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('list_items', {
     title: 'List Items',
-    description: 'List all items (boards, checklists, pages, and knowledge bases) with task counts, progress %, tags, and column summaries. Returns array of {id, name, itemType, projectId, taskCount, progress, tags, columns: [{id, title, taskCount, checkedCount}]}.',
-  }, async () => {
+    description: 'List all items with task counts and progress. Default includes column summaries; pass brief=true for just IDs, names, types, and counts.',
+    inputSchema: {
+      brief: z.boolean().optional().describe('Return minimal fields only: id, name, itemType, taskCount, progress (default: false)'),
+    },
+  }, async ({ brief }) => {
     try {
       const items = await api.listFiles()
+      if (brief) {
+        const briefItems = items.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          itemType: item.itemType,
+          taskCount: item.taskCount,
+          progress: item.progress,
+        }))
+        return json(briefItems)
+      }
       return json(items)
     } catch (err) {
       return errorResponse(err)
@@ -150,6 +163,41 @@ export function registerTools(server: McpServer) {
     try {
       const item = await api.getFile(itemId, 'L2')
       return text(item.markdown)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('get_task_detail', {
+    title: 'Get Task Detail',
+    description: 'Get full detail for a single task including description, acceptance criteria, learnings, subtasks, and all metadata. Use this after search/context tools return compact results and you need the full picture for a specific task.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+    },
+  }, async ({ itemId, taskId }) => {
+    try {
+      const item = await api.getFile(itemId, 'L2')
+      const allTasks = item.columns.flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
+      const task = allTasks.find((t: ApiTask) => t.id === taskId)
+      if (!task) return errorResponse(new Error('Task not found'))
+      const column = item.columns.find((c: ApiColumn) =>
+        flattenApiTasks(c.tasks).some((t: ApiTask) => t.id === taskId)
+      )
+      return json({
+        itemId,
+        itemName: item.name,
+        taskId: task.id,
+        title: task.displayContent,
+        content: task.content,
+        checked: task.checked,
+        metadata: task.metadata,
+        description: task.description,
+        acceptanceCriteria: task.acceptanceCriteria,
+        learnings: task.learnings,
+        children: task.children,
+        column: column?.title ?? '',
+      })
     } catch (err) {
       return errorResponse(err)
     }
@@ -519,7 +567,8 @@ export function registerTools(server: McpServer) {
         itemId: string
         itemName: string
         taskId: string
-        content: string
+        title: string
+        labels: string[]
         column: string
         checked: boolean | null
         relevance: number
@@ -553,7 +602,8 @@ export function registerTools(server: McpServer) {
                 itemId: itemSummary.id,
                 itemName: itemSummary.name,
                 taskId: task.id,
-                content: task.content,
+                title: task.displayContent,
+                labels: task.metadata.labels,
                 column: column.title,
                 checked: task.checked,
                 relevance: Math.round(relevance * 100) / 100,
@@ -583,9 +633,10 @@ export function registerTools(server: McpServer) {
       query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
       completedOnly: z.boolean().optional().describe('Only return completed tasks (default: false). Useful for finding learnings from done work.'),
+      detail: z.boolean().optional().describe('Include full descriptions/AC/learnings (default: false for compact results). Use get_task_detail for full single-task content.'),
       limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, label, completedOnly, limit }) => {
+  }, async ({ query, label, completedOnly, detail, limit }) => {
     try {
       // Try hybrid search when embeddings are available and we have a text query
       if (query && await serverHasSearch()) {
@@ -604,19 +655,7 @@ export function registerTools(server: McpServer) {
       }
 
       const items = await api.listFiles()
-      const results: Array<{
-        itemId: string
-        itemName: string
-        taskId: string
-        taskTitle: string
-        taskLabels: string[]
-        column: string
-        checked: boolean | null
-        description: string | null
-        acceptanceCriteria: string | null
-        learnings: string | null
-        relevance: number
-      }> = []
+      const results: any[] = []
 
       const queryTokens = query ? tokenizeForSearch(query) : []
       const queryLower = query?.toLowerCase()
@@ -665,13 +704,17 @@ export function registerTools(server: McpServer) {
                 itemId: itemSummary.id,
                 itemName: itemSummary.name,
                 taskId: task.id,
-                taskTitle: task.displayContent,
-                taskLabels: task.metadata.labels,
+                title: task.displayContent,
+                labels: task.metadata.labels,
                 column: column.title,
                 checked: task.checked,
-                description: task.description,
-                acceptanceCriteria: task.acceptanceCriteria,
-                learnings: task.learnings,
+                ...(detail ? {
+                  description: task.description,
+                  acceptanceCriteria: task.acceptanceCriteria,
+                  learnings: task.learnings,
+                } : {
+                  snippet: task.description ? task.description.slice(0, 100) : null,
+                }),
                 relevance: Math.round(relevance * 100) / 100,
               })
             }
@@ -880,9 +923,10 @@ export function registerTools(server: McpServer) {
     inputSchema: {
       query: z.string().optional().describe('Text to search for in knowledge items (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #)'),
+      detail: z.boolean().optional().describe('Include full descriptions/learnings (default: false). Use get_task_detail for full content.'),
       limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, label, limit }) => {
+  }, async ({ query, label, detail, limit }) => {
     try {
       // Try hybrid search when embeddings are available and we have a text query
       if (query && await serverHasSearch()) {
@@ -895,17 +939,7 @@ export function registerTools(server: McpServer) {
       }
 
       const items = await api.listFiles()
-      const results: Array<{
-        itemId: string
-        itemName: string
-        taskId: string
-        title: string
-        labels: string[]
-        description: string | null
-        learnings: string | null
-        column: string
-        relevance: number
-      }> = []
+      const results: any[] = []
 
       const queryTokens = query ? tokenizeForSearch(query) : []
       const queryLower = query?.toLowerCase()
@@ -954,9 +988,13 @@ export function registerTools(server: McpServer) {
                 taskId: task.id,
                 title: task.displayContent,
                 labels: task.metadata?.labels ?? [],
-                description: task.description,
-                learnings: task.learnings,
                 column: column.title,
+                ...(detail ? {
+                  description: task.description,
+                  learnings: task.learnings,
+                } : {
+                  snippet: task.description ? task.description.slice(0, 100) : null,
+                }),
                 relevance: Math.round(relevance * 100) / 100,
               })
             }

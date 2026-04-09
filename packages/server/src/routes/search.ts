@@ -429,7 +429,7 @@ function applyGraphBoost(hits: SearchHit[]): SearchHit[] {
 
 // ─── Compact Results ────────────────────────────────────────────────
 
-const COMPACT_MAX_CHARS = 200
+const COMPACT_MAX_CHARS = 100
 
 function truncate(text: string | null, maxLen: number): string | null {
   if (!text) return null

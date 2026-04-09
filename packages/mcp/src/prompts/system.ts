@@ -62,10 +62,22 @@ Description paragraph — background, context, the "why".
 - Use \`add_knowledge\` to record decisions, patterns, and references
 - Use \`synthesize_topic\` to assemble context briefs about a topic
 
+## Efficient Context Usage
+
+AutoMD tools are optimized for token efficiency using a two-stage pattern:
+
+**Stage 1 — Search & Discover (compact by default):**
+search_tasks, search_context, find_knowledge, and get_working_context return compact results with titles, labels, IDs, and short snippets. This is enough to decide which items are relevant.
+
+**Stage 2 — Drill Down (on demand):**
+Use get_task_detail(itemId, taskId) to fetch full content (description, AC, learnings, subtasks) for specific tasks you need to read or edit. Only request full detail when you need it.
+
+This means: search broadly with Stage 1, then drill into specific items with Stage 2. Avoid fetching full boards (L2) unless you need raw markdown.
+
 ## Available Tools
 - Item management: list_items, get_item, get_item_markdown, create_item (supports board/checklist/page/knowledge types), delete_item, rename_item
 - Column management: add_column, rename_column, delete_column
-- Task management: add_task, update_task, toggle_task, move_task, delete_task
+- Task management: add_task, update_task, toggle_task, move_task, delete_task, get_task_detail
 - Metadata: update_task_metadata, update_acceptance_criteria, update_learnings
 - Knowledge: add_knowledge, update_knowledge, find_knowledge, synthesize_topic, import_memories
 - Search: search_tasks, search_context, get_working_context

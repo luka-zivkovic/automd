@@ -210,12 +210,13 @@ export const api = {
     request(`/api/relationships/${id}`, { method: 'DELETE' }),
 
   // Context Assembly
-  assembleContext: (params: { itemId?: string; taskId?: string; topic?: string; limit?: number }) => {
+  assembleContext: (params: { itemId?: string; taskId?: string; topic?: string; limit?: number; compact?: boolean }) => {
     const query = new URLSearchParams()
     if (params.itemId) query.set('itemId', params.itemId)
     if (params.taskId) query.set('taskId', params.taskId)
     if (params.topic) query.set('topic', params.topic)
     if (params.limit) query.set('limit', String(params.limit))
+    query.set('compact', String(params.compact ?? true))
     return request(`/api/context/assemble?${query.toString()}`)
   },
 

@@ -51,6 +51,7 @@ function stripTaskForL1(task: Task) {
     displayContent: task.displayContent,
     checked: task.checked,
     metadata: task.metadata,
+    snippet: task.description ? task.description.slice(0, 100) : null,
   }
 }
 
