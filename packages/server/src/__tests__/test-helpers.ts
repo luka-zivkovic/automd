@@ -5,6 +5,8 @@ import { createServer, type Server } from 'node:http'
 import { createApp } from '../app.js'
 import { setupWebSocket } from '../ws.js'
 import { clearAllCaches } from '../board-cache.js'
+import { resetAuthCache } from '../auth-storage.js'
+import { resetRateLimiter } from '../routes/auth.js'
 
 let counter = 0
 
@@ -35,6 +37,8 @@ export async function createTestEnv() {
       server.close((err) => (err ? reject(err) : resolve()))
     })
     clearAllCaches()
+    resetAuthCache()
+    resetRateLimiter()
     try {
       fs.rmSync(tempDir, { recursive: true, force: true })
     } catch {

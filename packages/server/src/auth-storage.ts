@@ -41,6 +41,11 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 let _authCache: AuthData | null = null
 
+/** Reset in-memory auth cache (for tests) */
+export function resetAuthCache(): void {
+  _authCache = null
+}
+
 // ─── File I/O ───────────────────────────────────────────────────────────
 
 function getAuthPath(): string {
@@ -92,7 +97,7 @@ function writeAuth(data: AuthData) {
 // ─── Hashing ────────────────────────────────────────────────────────────
 
 function hashPassword(password: string, salt: string): string {
-  return crypto.scryptSync(password, salt, 64, { N: 65536, r: 8, p: 1 }).toString('hex')
+  return crypto.scryptSync(password, salt, 64, { N: 65536, r: 8, p: 1, maxmem: 128 * 1024 * 1024 }).toString('hex')
 }
 
 function generateSalt(): string {

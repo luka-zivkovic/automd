@@ -22,6 +22,21 @@ function isValidExternalUrl(url: string): boolean {
   } catch { return false }
 }
 
+/** Ollama URLs allow localhost but block dangerous targets (IMDS, private ranges) */
+function isValidLocalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+    const hostname = parsed.hostname.toLowerCase()
+    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number)
+      if (a === 169 && b === 254) return false // block AWS IMDS / link-local
+    }
+    return true
+  } catch { return false }
+}
+
 export const settingsRouter = Router()
 
 // Get settings (masked API keys)
@@ -73,6 +88,9 @@ settingsRouter.put('/', async (req, res, next) => {
 
         if (emb.ollama) {
           if (emb.ollama.url !== undefined) {
+            if (emb.ollama.url && !isValidLocalUrl(emb.ollama.url)) {
+              return { error: 'Invalid or blocked Ollama URL' as const }
+            }
             settings.embeddings.ollama.url = emb.ollama.url
           }
           if (emb.ollama.model !== undefined) {

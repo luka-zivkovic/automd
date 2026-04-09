@@ -36,12 +36,18 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // Clean up stale entries periodically
-setInterval(() => {
+const rateLimitCleanupInterval = setInterval(() => {
   const now = Date.now()
   for (const [ip, entry] of loginAttempts) {
     if (now > entry.resetAt) loginAttempts.delete(ip)
   }
 }, 5 * 60 * 1000) // every 5 minutes
+rateLimitCleanupInterval.unref()
+
+/** Reset rate limiter state (for tests) */
+export function resetRateLimiter(): void {
+  loginAttempts.clear()
+}
 
 // Status — always public
 authRouter.get('/status', (_req, res) => {
