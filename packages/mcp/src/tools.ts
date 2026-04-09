@@ -116,10 +116,23 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('list_items', {
     title: 'List Items',
-    description: 'List all items (boards, checklists, pages, and knowledge bases) with task counts, progress %, tags, and column summaries. Returns array of {id, name, itemType, projectId, taskCount, progress, tags, columns: [{id, title, taskCount, checkedCount}]}.',
-  }, async () => {
+    description: 'List all items with task counts and progress. Default includes column summaries; pass brief=true for just IDs, names, types, and counts.',
+    inputSchema: {
+      brief: z.boolean().optional().describe('Return minimal fields only: id, name, itemType, taskCount, progress (default: false)'),
+    },
+  }, async ({ brief }) => {
     try {
       const items = await api.listFiles()
+      if (brief) {
+        const briefItems = items.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          itemType: item.itemType,
+          taskCount: item.taskCount,
+          progress: item.progress,
+        }))
+        return json(briefItems)
+      }
       return json(items)
     } catch (err) {
       return errorResponse(err)
@@ -148,8 +161,43 @@ export function registerTools(server: McpServer) {
     inputSchema: { itemId: z.string().describe('The item ID') },
   }, async ({ itemId }) => {
     try {
-      const item = await api.getFile(itemId)
+      const item = await api.getFile(itemId, 'L2')
       return text(item.markdown)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('get_task_detail', {
+    title: 'Get Task Detail',
+    description: 'Get full detail for a single task including description, acceptance criteria, learnings, subtasks, and all metadata. Use this after search/context tools return compact results and you need the full picture for a specific task.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+    },
+  }, async ({ itemId, taskId }) => {
+    try {
+      const item = await api.getFile(itemId, 'L2')
+      const allTasks = item.columns.flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
+      const task = allTasks.find((t: ApiTask) => t.id === taskId)
+      if (!task) return errorResponse(new Error('Task not found'))
+      const column = item.columns.find((c: ApiColumn) =>
+        flattenApiTasks(c.tasks).some((t: ApiTask) => t.id === taskId)
+      )
+      return json({
+        itemId,
+        itemName: item.name,
+        taskId: task.id,
+        title: task.displayContent,
+        content: task.content,
+        checked: task.checked,
+        metadata: task.metadata,
+        description: task.description,
+        acceptanceCriteria: task.acceptanceCriteria,
+        learnings: task.learnings,
+        children: task.children,
+        column: column?.title ?? '',
+      })
     } catch (err) {
       return errorResponse(err)
     }
@@ -237,7 +285,7 @@ export function registerTools(server: McpServer) {
   }, async ({ itemId, taskId, content, agentName }) => {
     try {
       let finalContent = content
-      if (agentName && finalContent) {
+      if (agentName && finalContent !== undefined) {
         finalContent = finalContent.replace(/\s*built-by:[\w-]+/gi, '') + ` built-by:${agentName}`
       }
       const result = await api.updateTask(itemId, taskId, {
@@ -252,7 +300,7 @@ export function registerTools(server: McpServer) {
 
   server.registerTool('toggle_task', {
     title: 'Toggle Task',
-    description: 'Toggle a task between checked [ ] and unchecked [x]. Only applies to tasks with checkbox prefixes. Sets completedAt on check, clears on uncheck.',
+    description: 'Toggle a task between unchecked [ ] and checked [x]. Only applies to tasks with checkbox prefixes. Sets completedAt on check, clears on uncheck.',
     inputSchema: {
       itemId: z.string().describe('The item ID'),
       taskId: z.string().describe('The task ID'),
@@ -315,8 +363,12 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ itemId, title }) => {
     try {
+      // Sanitize title — strip newlines and limit length
+      const safeTitle = title.replace(/[\r\n]/g, ' ').trim().slice(0, 200)
+      if (!safeTitle) return errorResponse(new Error('Column title cannot be empty'))
+
       const item = await api.getFile(itemId)
-      const newMarkdown = item.markdown.trimEnd() + `\n\n# ${title}\n\n`
+      const newMarkdown = item.markdown.trimEnd() + `\n\n# ${safeTitle}\n\n`
       const result = await api.updateFile(itemId, { markdown: newMarkdown })
       return json(result)
     } catch (err) {
@@ -376,10 +428,10 @@ export function registerTools(server: McpServer) {
     try {
       const item = await api.getFile(itemId)
       const task = item.columns
-        .flatMap((c: ApiColumn) => c.tasks)
+        .flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
         .find((t: ApiTask) => t.id === taskId)
 
-      if (!task) return text('Task not found')
+      if (!task) return errorResponse(new Error('Task not found'))
 
       const metadata = { ...task.metadata }
       if (priority !== undefined) metadata.priority = priority
@@ -506,15 +558,17 @@ export function registerTools(server: McpServer) {
       assignee: z.string().optional().describe('Filter by assignee (without @)'),
       label: z.string().optional().describe('Filter by label (without #)'),
       checked: z.boolean().optional().describe('Filter by completion status'),
+      limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, assignee, label, checked }) => {
+  }, async ({ query, assignee, label, checked, limit }) => {
     try {
       const items = await api.listFiles()
       const results: Array<{
         itemId: string
         itemName: string
         taskId: string
-        content: string
+        title: string
+        labels: string[]
         column: string
         checked: boolean | null
         relevance: number
@@ -529,7 +583,7 @@ export function registerTools(server: McpServer) {
           for (const column of item.columns) {
             for (const task of flattenApiTasks(column.tasks)) {
               if (assignee && !task.metadata.assignees.includes(assignee)) continue
-              if (label && !task.metadata.labels.includes(label)) continue
+              if (label && !task.metadata.labels.some(l => l.toLowerCase() === label.toLowerCase())) continue
               if (checked !== undefined && task.checked !== checked) continue
 
               let relevance = 1.0
@@ -548,7 +602,8 @@ export function registerTools(server: McpServer) {
                 itemId: itemSummary.id,
                 itemName: itemSummary.name,
                 taskId: task.id,
-                content: task.content,
+                title: task.displayContent,
+                labels: task.metadata.labels,
                 column: column.title,
                 checked: task.checked,
                 relevance: Math.round(relevance * 100) / 100,
@@ -560,10 +615,12 @@ export function registerTools(server: McpServer) {
         }
       }
 
-      // Sort by relevance descending
+      // Sort by relevance descending, then limit
       results.sort((a, b) => b.relevance - a.relevance)
+      const maxResults = limit ?? 20
+      const limitedResults = results.slice(0, maxResults)
 
-      return json({ count: results.length, results })
+      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
     } catch (err) {
       return errorResponse(err)
     }
@@ -576,33 +633,29 @@ export function registerTools(server: McpServer) {
       query: z.string().optional().describe('Text to search for across descriptions, AC, learnings, and task content (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #). Also matches #tags inside learnings text.'),
       completedOnly: z.boolean().optional().describe('Only return completed tasks (default: false). Useful for finding learnings from done work.'),
+      detail: z.boolean().optional().describe('Include full descriptions/AC/learnings (default: false for compact results). Use get_task_detail for full single-task content.'),
+      limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, label, completedOnly }) => {
+  }, async ({ query, label, completedOnly, detail, limit }) => {
     try {
       // Try hybrid search when embeddings are available and we have a text query
       if (query && await serverHasSearch()) {
         try {
           const searchResults = await api.search({ q: query, label: label ?? undefined, compact: true })
-          return json({ count: searchResults.count, results: searchResults.results, mode: searchResults.mode })
+          let filteredResults = searchResults.results
+          if (completedOnly) {
+            filteredResults = filteredResults.filter((r: any) => r.checked === true)
+          }
+          const maxResults = limit ?? 20
+          filteredResults = filteredResults.slice(0, maxResults)
+          return json({ count: filteredResults.length, total: searchResults.count, results: filteredResults, mode: searchResults.mode })
         } catch {
           // Fall through to legacy search
         }
       }
 
       const items = await api.listFiles()
-      const results: Array<{
-        itemId: string
-        itemName: string
-        taskId: string
-        taskTitle: string
-        taskLabels: string[]
-        column: string
-        checked: boolean | null
-        description: string | null
-        acceptanceCriteria: string | null
-        learnings: string | null
-        relevance: number
-      }> = []
+      const results: any[] = []
 
       const queryTokens = query ? tokenizeForSearch(query) : []
       const queryLower = query?.toLowerCase()
@@ -635,7 +688,7 @@ export function registerTools(server: McpServer) {
               }
 
               if (label) {
-                const hasLabel = task.metadata.labels.includes(label)
+                const hasLabel = task.metadata.labels.some(l => l.toLowerCase() === label.toLowerCase())
                 const hasInlineLabelTag = searchable.toLowerCase().includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
                   (t: string) => t.toLowerCase() === label.toLowerCase()
@@ -651,13 +704,17 @@ export function registerTools(server: McpServer) {
                 itemId: itemSummary.id,
                 itemName: itemSummary.name,
                 taskId: task.id,
-                taskTitle: task.displayContent,
-                taskLabels: task.metadata.labels,
+                title: task.displayContent,
+                labels: task.metadata.labels,
                 column: column.title,
                 checked: task.checked,
-                description: task.description,
-                acceptanceCriteria: task.acceptanceCriteria,
-                learnings: task.learnings,
+                ...(detail ? {
+                  description: task.description,
+                  acceptanceCriteria: task.acceptanceCriteria,
+                  learnings: task.learnings,
+                } : {
+                  snippet: task.description ? task.description.slice(0, 100) : null,
+                }),
                 relevance: Math.round(relevance * 100) / 100,
               })
             }
@@ -667,10 +724,12 @@ export function registerTools(server: McpServer) {
         }
       }
 
-      // Sort by relevance descending
+      // Sort by relevance descending, then limit
       results.sort((a, b) => b.relevance - a.relevance)
+      const maxResults = limit ?? 20
+      const limitedResults = results.slice(0, maxResults)
 
-      return json({ count: results.length, results })
+      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
     } catch (err) {
       return errorResponse(err)
     }
@@ -724,6 +783,59 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  server.registerTool('update_project', {
+    title: 'Update Project',
+    description: 'Update a project\'s name, color, or curated tags. Use list_projects to get project IDs.',
+    inputSchema: {
+      projectId: z.string().describe('The project ID'),
+      name: z.string().optional().describe('New project name'),
+      color: z.string().optional().describe('New color hex code (e.g. "#3b82f6")'),
+      tags: z.array(z.string()).optional().describe('Curated tag list for this project'),
+    },
+  }, async ({ projectId, name, color, tags }) => {
+    try {
+      const updates: Record<string, unknown> = {}
+      if (name !== undefined) updates.name = name
+      if (color !== undefined) updates.color = color
+      if (tags !== undefined) updates.tags = tags
+      const result = await api.updateProject(projectId, updates)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('delete_project', {
+    title: 'Delete Project',
+    description: 'Delete a project. Files in the project are NOT deleted — they become unassigned. Use list_projects to get project IDs.',
+    inputSchema: {
+      projectId: z.string().describe('The project ID to delete'),
+    },
+  }, async ({ projectId }) => {
+    try {
+      await api.deleteProject(projectId)
+      return text('Project deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('move_file_to_project', {
+    title: 'Move File to Project',
+    description: 'Move an item (board, checklist, page, knowledge base) into a project. The item\'s projectId is updated. Pass the project ID to assign, or use update_project to manage project membership.',
+    inputSchema: {
+      projectId: z.string().describe('The target project ID'),
+      fileId: z.string().describe('The file/item ID to move into the project'),
+    },
+  }, async ({ projectId, fileId }) => {
+    try {
+      const result = await api.moveFileToProject(projectId, fileId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   // ─── Tag Registry ───────────────────────────────────────────────
 
   server.registerTool('list_tags', {
@@ -735,6 +847,21 @@ export function registerTools(server: McpServer) {
   }, async ({ projectId }) => {
     try {
       const result = await api.getTags(projectId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('update_instance_tags', {
+    title: 'Update Instance Tags',
+    description: 'Set the curated instance-level tag list. These tags appear across all projects and items. Use list_tags first to see current tags.',
+    inputSchema: {
+      tags: z.array(z.string()).describe('Complete list of curated tags (replaces existing). Tags are normalized to lowercase.'),
+    },
+  }, async ({ tags }) => {
+    try {
+      const result = await api.updateInstanceTags(tags)
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -840,7 +967,7 @@ export function registerTools(server: McpServer) {
       if (labels !== undefined) {
         // Fetch current task to preserve displayContent
         const item = await api.getFile(itemId)
-        const allTasks = item.columns.flatMap((c: ApiColumn) => c.tasks)
+        const allTasks = item.columns.flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
         const task = allTasks.find((t: ApiTask) => t.id === taskId)
         if (task) {
           await api.updateTask(itemId, taskId, {
@@ -864,8 +991,10 @@ export function registerTools(server: McpServer) {
     inputSchema: {
       query: z.string().optional().describe('Text to search for in knowledge items (supports prefix matching)'),
       label: z.string().optional().describe('Filter by label (without #)'),
+      detail: z.boolean().optional().describe('Include full descriptions/learnings (default: false). Use get_task_detail for full content.'),
+      limit: z.number().min(1).max(100).optional().describe('Max results to return (default 20, max 100)'),
     },
-  }, async ({ query, label }) => {
+  }, async ({ query, label, detail, limit }) => {
     try {
       // Try hybrid search when embeddings are available and we have a text query
       if (query && await serverHasSearch()) {
@@ -878,17 +1007,7 @@ export function registerTools(server: McpServer) {
       }
 
       const items = await api.listFiles()
-      const results: Array<{
-        itemId: string
-        itemName: string
-        taskId: string
-        title: string
-        labels: string[]
-        description: string | null
-        learnings: string | null
-        column: string
-        relevance: number
-      }> = []
+      const results: any[] = []
 
       const queryTokens = query ? tokenizeForSearch(query) : []
       const queryLower = query?.toLowerCase()
@@ -923,7 +1042,7 @@ export function registerTools(server: McpServer) {
 
               // Apply label filter (including frontmatter tags)
               if (label) {
-                const hasLabel = task.metadata?.labels?.includes(label)
+                const hasLabel = task.metadata?.labels?.some(l => l.toLowerCase() === label.toLowerCase())
                 const hasInlineTag = task.learnings?.toLowerCase().includes(`#${label.toLowerCase()}`)
                 const hasFrontmatterTag = item.meta?.tags?.some(
                   (t: string) => t.toLowerCase() === label.toLowerCase()
@@ -937,9 +1056,13 @@ export function registerTools(server: McpServer) {
                 taskId: task.id,
                 title: task.displayContent,
                 labels: task.metadata?.labels ?? [],
-                description: task.description,
-                learnings: task.learnings,
                 column: column.title,
+                ...(detail ? {
+                  description: task.description,
+                  learnings: task.learnings,
+                } : {
+                  snippet: task.description ? task.description.slice(0, 100) : null,
+                }),
                 relevance: Math.round(relevance * 100) / 100,
               })
             }
@@ -949,10 +1072,12 @@ export function registerTools(server: McpServer) {
         }
       }
 
-      // Sort by relevance descending
+      // Sort by relevance descending, then limit
       results.sort((a, b) => b.relevance - a.relevance)
+      const maxResults = limit ?? 20
+      const limitedResults = results.slice(0, maxResults)
 
-      return json({ count: results.length, results })
+      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
     } catch (err) {
       return errorResponse(err)
     }
@@ -1040,6 +1165,11 @@ export function registerTools(server: McpServer) {
             })
           }
 
+          if (!result?.taskId) {
+            errors.push(`Failed to create task for: ${item.content.slice(0, 50)}`)
+            continue
+          }
+
           results.push({ content: item.content, taskId: result.taskId })
 
           // Add newly created item to existing knowledge so subsequent items in this batch can dedup against it
@@ -1111,6 +1241,33 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  server.registerTool('delete_relationship', {
+    title: 'Delete Relationship',
+    description: 'Remove a relationship between two tasks. Use get_related to find relationship IDs.',
+    inputSchema: {
+      relationshipId: z.string().describe('The relationship ID (from get_related response)'),
+    },
+  }, async ({ relationshipId }) => {
+    try {
+      await api.deleteRelationship(relationshipId)
+      return text('Relationship deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('get_relationship_stats', {
+    title: 'Get Relationship Stats',
+    description: 'Get statistics about the relationship graph: total relationships, auto-detected count, and manually created count.',
+  }, async () => {
+    try {
+      const result = await api.getRelationshipStats()
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   server.registerTool('get_working_context', {
     title: 'Get Working Context',
     description: 'Assemble rich context for a task or topic. Returns the task itself, related knowledge (via relationships + semantic similarity), recent learnings from completed tasks, and board-level context. One call replaces: get_item + find_knowledge + search_context + synthesize_topic.',
@@ -1149,7 +1306,7 @@ export function registerTools(server: McpServer) {
       for (const column of item.columns as ApiColumn[]) {
         if (columnId && column.id !== columnId) continue
 
-        for (const task of column.tasks) {
+        for (const task of flattenApiTasks(column.tasks)) {
           if (!task.checked) continue
           if (task.metadata?.archived) continue
 

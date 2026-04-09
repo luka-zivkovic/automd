@@ -28,6 +28,7 @@ export function KanbanBoard() {
   const columns = useDocumentStore((s) => s.columns)
   const moveTask = useDocumentStore((s) => s.moveTask)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
+  const [pendingDrop, setPendingDrop] = useState<{ taskId: string; columnId: string; index: number } | null>(null)
   const [showArchived, setShowArchived] = useState(false)
 
   const archivedCount = useMemo(
@@ -97,14 +98,15 @@ export function KanbanBoard() {
 
     const activeId = active.id as string
     const overId = over.id as string
-
     const sourceColumnId = findColumnId(activeId)
     const targetColumnId = findColumnId(overId)
 
     if (!sourceColumnId || !targetColumnId) return
-    if (sourceColumnId === targetColumnId) return
+    if (sourceColumnId === targetColumnId) {
+      setPendingDrop(null)
+      return
+    }
 
-    // Cross-column move during drag for visual feedback
     const targetColumn = columns.find((c) => c.id === targetColumnId)
     if (!targetColumn) return
 
@@ -116,12 +118,13 @@ export function KanbanBoard() {
       if (targetIndex === -1) targetIndex = targetColumn.tasks.length
     }
 
-    moveTask(activeId, targetColumnId, targetIndex)
+    setPendingDrop({ taskId: activeId, columnId: targetColumnId, index: targetIndex })
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     setActiveTask(null)
+    setPendingDrop(null)
 
     if (!over) return
 
@@ -180,7 +183,7 @@ export function KanbanBoard() {
 
         <div className="flex gap-5 p-6 flex-1 overflow-x-auto">
           {filteredColumns.map((col, idx) => (
-            <KanbanColumn key={col.id} column={col} columnIndex={idx} totalColumns={filteredColumns.length} />
+            <KanbanColumn key={col.id} column={col} columnIndex={idx} totalColumns={filteredColumns.length} pendingDrop={pendingDrop?.columnId === col.id ? pendingDrop : null} />
           ))}
 
           <AddColumnButton />

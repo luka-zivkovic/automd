@@ -172,7 +172,15 @@ export function updateWebhookStats(
     statsFlushTimer = setTimeout(() => {
       if (statsDirty && pendingStats) {
         try {
-          writeWebhooks(pendingStats)
+          // Merge stats into fresh data to avoid overwriting concurrent CRUD changes
+          const freshData = readWebhooks()
+          for (const pending of pendingStats.webhooks) {
+            const target = freshData.webhooks.find(w => w.id === pending.id)
+            if (target) {
+              target.stats = pending.stats
+            }
+          }
+          writeWebhooks(freshData)
         } catch (err) {
           console.error('[webhooks] Failed to flush stats:', err)
         }

@@ -287,6 +287,8 @@ contextRouter.get('/assemble', async (req, res, next) => {
     const taskId = req.query.taskId as string | undefined
     const topic = req.query.topic as string | undefined
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 30)
+    const compact = req.query.compact === 'true'
+    const truncLen = compact ? 50 : 100
 
     if (!topic && (!itemId || !taskId)) {
       res.status(400).json({ error: 'Provide either (itemId + taskId) or topic' })
@@ -358,8 +360,8 @@ contextRouter.get('/assemble', async (req, res, next) => {
               result.related.push({
                 itemId: relFile.id, itemName: relFile.name, taskId: relTask.id,
                 title: relTask.displayContent, labels: relTask.metadata.labels,
-                description: truncateStr(relTask.description, 300),
-                learnings: truncateStr(relTask.learnings, 300),
+                description: truncateStr(relTask.description, truncLen),
+                learnings: truncateStr(relTask.learnings, truncLen),
                 column: relCol?.title ?? relTask.column,
                 source: 'relationship', relationshipType: rel.relationType,
               })
@@ -389,8 +391,8 @@ contextRouter.get('/assemble', async (req, res, next) => {
               result.related.push({
                 itemId: semFile.id, itemName: semFile.name, taskId: semTask.id,
                 title: semTask.displayContent, labels: semTask.metadata.labels,
-                description: truncateStr(semTask.description, 300),
-                learnings: truncateStr(semTask.learnings, 300),
+                description: truncateStr(semTask.description, truncLen),
+                learnings: truncateStr(semTask.learnings, truncLen),
                 column: semCol?.title ?? semTask.column, source: 'semantic',
               })
             }
@@ -411,7 +413,7 @@ contextRouter.get('/assemble', async (req, res, next) => {
             result.recentLearnings.push({
               itemId: file.id, itemName: file.name, taskId: t.id,
               title: t.displayContent, labels: t.metadata.labels,
-              description: null, learnings: truncateStr(t.learnings, 300),
+              description: null, learnings: truncateStr(t.learnings, truncLen),
               column: tCol?.title ?? t.column, source: 'learning',
             })
           }
@@ -438,8 +440,8 @@ contextRouter.get('/assemble', async (req, res, next) => {
           result.related.push({
             itemId: file.id, itemName: file.name, taskId: task.id,
             title: task.displayContent, labels: task.metadata.labels,
-            description: truncateStr(task.description, 300),
-            learnings: truncateStr(task.learnings, 300),
+            description: truncateStr(task.description, truncLen),
+            learnings: truncateStr(task.learnings, truncLen),
             column: col?.title ?? task.column, source: 'semantic',
           })
         }

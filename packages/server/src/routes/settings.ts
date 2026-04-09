@@ -3,6 +3,40 @@ import { readSettings, readRawSettings, writeSettings, maskSettings, isMaskedVal
 import type { AppSettings } from '../settings-storage.js'
 import { withWriteLock } from '../write-lock.js'
 
+function isValidExternalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+    const hostname = parsed.hostname.toLowerCase()
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') return false
+    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number)
+      if (a === 10 || a === 127 || a === 0) return false
+      if (a === 172 && b >= 16 && b <= 31) return false
+      if (a === 192 && b === 168) return false
+      if (a === 169 && b === 254) return false
+    }
+    if (hostname.startsWith('[') || hostname.includes(':')) return false
+    return true
+  } catch { return false }
+}
+
+/** Ollama URLs allow localhost but block dangerous targets (IMDS, private ranges) */
+function isValidLocalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+    const hostname = parsed.hostname.toLowerCase()
+    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number)
+      if (a === 169 && b === 254) return false // block AWS IMDS / link-local
+    }
+    return true
+  } catch { return false }
+}
+
 export const settingsRouter = Router()
 
 // Get settings (masked API keys)
@@ -38,10 +72,13 @@ settingsRouter.put('/', async (req, res, next) => {
 
         if (emb.openai) {
           // Only update apiKey if it's not a masked/sentinel value
-          if (emb.openai.apiKey !== undefined && !isMaskedValue(emb.openai.apiKey)) {
+          if (emb.openai.apiKey !== undefined && emb.openai.apiKey !== '' && !isMaskedValue(emb.openai.apiKey)) {
             settings.embeddings.openai.apiKey = emb.openai.apiKey
           }
           if (emb.openai.baseUrl !== undefined) {
+            if (emb.openai.baseUrl && !isValidExternalUrl(emb.openai.baseUrl)) {
+              return { error: 'Invalid or blocked base URL' as const }
+            }
             settings.embeddings.openai.baseUrl = emb.openai.baseUrl
           }
           if (emb.openai.model !== undefined) {
@@ -51,6 +88,9 @@ settingsRouter.put('/', async (req, res, next) => {
 
         if (emb.ollama) {
           if (emb.ollama.url !== undefined) {
+            if (emb.ollama.url && !isValidLocalUrl(emb.ollama.url)) {
+              return { error: 'Invalid or blocked Ollama URL' as const }
+            }
             settings.embeddings.ollama.url = emb.ollama.url
           }
           if (emb.ollama.model !== undefined) {
@@ -62,6 +102,11 @@ settingsRouter.put('/', async (req, res, next) => {
       writeSettings(settings)
       return settings
     })
+
+    if (current && 'error' in current) {
+      res.status(400).json({ error: current.error })
+      return
+    }
 
     // Notify embeddings system of config change (if initialized)
     const { reinitEmbeddings } = await import('../embeddings/index.js')

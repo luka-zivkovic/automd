@@ -51,6 +51,7 @@ function stripTaskForL1(task: Task) {
     displayContent: task.displayContent,
     checked: task.checked,
     metadata: task.metadata,
+    snippet: task.description ? task.description.slice(0, 100) : null,
   }
 }
 
@@ -163,6 +164,10 @@ filesRouter.post('/', async (req, res, next) => {
     res.status(400).json({ error: 'Invalid id format' })
     return
   }
+  if (itemType !== undefined && !['board', 'checklist', 'page', 'knowledge'].includes(itemType)) {
+    res.status(400).json({ error: 'itemType must be board, checklist, page, or knowledge' })
+    return
+  }
 
   try {
     const file = await withWriteLock(() => {
@@ -247,13 +252,14 @@ filesRouter.delete('/:id', async (req, res, next) => {
   }
 
   try {
-    // Capture name before deletion for webhook payload
-    const fileBeforeDelete = storage.getFile(req.params.id)
-    const deleted = await withWriteLock(() => {
-      return storage.deleteFile(req.params.id)
+    const result = await withWriteLock(() => {
+      const fileBeforeDelete = storage.getFile(req.params.id)
+      if (!fileBeforeDelete) return { deleted: false, name: '' }
+      const deleted = storage.deleteFile(req.params.id)
+      return { deleted, name: fileBeforeDelete.name }
     })
 
-    if (!deleted) {
+    if (!result.deleted) {
       res.status(404).json({ error: 'Board not found' })
       return
     }
@@ -262,7 +268,7 @@ filesRouter.delete('/:id', async (req, res, next) => {
     broadcast({ type: 'file:deleted', payload: { id: req.params.id, actor: req.body?.actor } })
     dispatchWebhookEvent('board.deleted', {
       boardId: req.params.id,
-      boardName: fileBeforeDelete?.name ?? '',
+      boardName: result.name,
     })
     res.status(204).send()
   } catch (err) {

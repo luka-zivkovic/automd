@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import { isAuthDisabled, isSetupComplete, validateCredential } from './auth-storage.js'
+import { isAuthDisabled, isSetupComplete, validateCredential, getIdentityFromCredential } from './auth-storage.js'
 
 export interface BroadcastEvent {
   type: string
@@ -26,19 +26,33 @@ export function setupWebSocket(server: Server): WebSocketServer {
     path: '/ws',
     verifyClient: (info, callback) => {
       if (isAuthDisabled() || !isSetupComplete()) {
+        ;(info.req as any)._automdIdentity = 'anonymous'
         callback(true)
         return
       }
 
+      // Try Authorization header first (preferred — not logged by proxies)
+      const authHeader = info.req.headers['authorization']
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const headerToken = authHeader.slice(7)
+        if (validateCredential(headerToken)) {
+          ;(info.req as any)._automdIdentity = getIdentityFromCredential(headerToken) ?? 'authenticated'
+          callback(true)
+          return
+        }
+      }
+
+      // Fall back to query parameter (legacy, visible in server/proxy logs)
       const url = new URL(info.req.url || '', `http://${info.req.headers.host ?? 'localhost'}`)
       const token = url.searchParams.get('token')
 
-      if (!token || !validateCredential(token)) {
-        callback(false, 401, 'Unauthorized')
+      if (token && validateCredential(token)) {
+        ;(info.req as any)._automdIdentity = getIdentityFromCredential(token) ?? 'authenticated'
+        callback(true)
         return
       }
 
-      callback(true)
+      callback(false, 401, 'Unauthorized')
     },
   })
 
@@ -61,7 +75,8 @@ export function setupWebSocket(server: Server): WebSocketServer {
 
   wss.on('close', () => clearInterval(heartbeat))
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    const serverIdentity = (req as any)._automdIdentity || 'anonymous'
     console.log('[ws] Client connected')
     aliveClients.add(ws)
 
@@ -72,9 +87,10 @@ export function setupWebSocket(server: Server): WebSocketServer {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString())
-        if (msg.type === 'presence:join' && typeof msg.payload?.username === 'string') {
+        if (msg.type === 'presence:join') {
+          // Use server-verified identity when auth is enabled, not client-supplied username
           clients.set(ws, {
-            username: msg.payload.username || 'Anonymous',
+            username: serverIdentity !== 'anonymous' ? serverIdentity : (msg.payload?.username || 'Anonymous'),
             connectedAt: Date.now(),
           })
           broadcastPresence()

@@ -10,7 +10,7 @@ import * as sqliteVec from 'sqlite-vec'
 import path from 'node:path'
 import { getAutomdDir } from '../config.js'
 
-export type ContentTier = 'knowledge' | 'task' | 'page'
+export type ContentTier = 'knowledge' | 'learning' | 'task' | 'page'
 
 export interface SearchResult {
   id: string
@@ -122,7 +122,8 @@ export class VectorStore {
 
       if (!row) return false
       if (row.provider !== this.providerName) return true
-      if (row.dimensions != null && row.dimensions !== this.dimensions) return true
+      // Treat NULL dimensions (pre-migration rows) as a mismatch — safer to recreate
+      if (row.dimensions == null || row.dimensions !== this.dimensions) return true
       return false
     } catch {
       return false
@@ -201,8 +202,10 @@ export class VectorStore {
   }
 
   deleteById(id: string): void {
-    this.db.prepare('DELETE FROM embeddings WHERE id = ?').run(id)
-    this.db.prepare('DELETE FROM embedding_meta WHERE id = ?').run(id)
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM embeddings WHERE id = ?').run(id)
+      this.db.prepare('DELETE FROM embedding_meta WHERE id = ?').run(id)
+    })()
   }
 
   listIdsByItemId(itemId: string): string[] {

@@ -18,7 +18,7 @@ import * as storage from '../storage.js'
 import { broadcast } from '../ws.js'
 import { withWriteLock } from '../write-lock.js'
 import { isValidId } from '../validation.js'
-import { parseBoard } from '../board-cache.js'
+import { parseBoard, invalidateBoardCache } from '../board-cache.js'
 import { dispatchWebhookEvent } from '../webhook-delivery.js'
 import type { WebhookEventType, TaskEventData } from '../webhook-events.js'
 import { queueEmbeddingUpdate } from '../embeddings/index.js'
@@ -26,22 +26,22 @@ import { queueEmbeddingUpdate } from '../embeddings/index.js'
 type FileParams = { fileId: string }
 type TaskParams = { fileId: string; taskId: string }
 
+function flattenTasks(tasks: { id: string; children: any[] }[]): { id: string; children: any[] }[] {
+  const result: { id: string; children: any[] }[] = []
+  const stack = [...tasks]
+  while (stack.length > 0) {
+    const t = stack.pop()!
+    result.push(t)
+    if (t.children) stack.push(...t.children)
+  }
+  return result
+}
+
 export const tasksRouter = Router({ mergeParams: true })
 
-function saveAndBroadcast(
-  fileId: string,
-  markdown: string,
-  webhookEvent?: { event: WebhookEventType; data: TaskEventData },
-) {
-  const file = storage.updateFileMarkdown(fileId, markdown)
-  if (file) {
-    broadcast({ type: 'file:updated', payload: { id: file.id, markdown: file.markdown } })
-    if (webhookEvent) {
-      dispatchWebhookEvent(webhookEvent.event, webhookEvent.data)
-    }
-    queueEmbeddingUpdate(fileId, markdown, file.itemType)
-  }
-  return file
+function saveFile(fileId: string, markdown: string) {
+  invalidateBoardCache(fileId)
+  return storage.updateFileMarkdown(fileId, markdown)
 }
 
 // List tasks in a board
@@ -79,6 +79,11 @@ tasksRouter.post('/', async (req: Request<FileParams>, res, next) => {
     return
   }
 
+  if (typeof content !== 'string' || content.length > 2000) {
+    res.status(400).json({ error: 'content must be a string of 2000 characters or less' })
+    return
+  }
+
   try {
     const result = await withWriteLock(() => {
       const file = storage.getFile(req.params.fileId)
@@ -96,19 +101,24 @@ tasksRouter.post('/', async (req: Request<FileParams>, res, next) => {
       const markdown = serializeAst(newAst)
 
       const col = columns.find((c) => c.id === columnId)
-      saveAndBroadcast(req.params.fileId, markdown, {
-        event: 'task.created',
-        data: {
-          taskId,
-          boardId: req.params.fileId,
-          boardName: file.name,
-          taskTitle: content,
-          column: col?.title ?? columnId,
-          checked: null,
-        },
-      })
+      const savedFile = saveFile(req.params.fileId, markdown)
 
-      return { taskId, content }
+      return {
+        taskId,
+        content,
+        file: savedFile,
+        webhookData: {
+          event: 'task.created' as WebhookEventType,
+          data: {
+            taskId,
+            boardId: req.params.fileId,
+            boardName: file.name,
+            taskTitle: content,
+            column: col?.title ?? columnId,
+            checked: null,
+          } as TaskEventData,
+        },
+      }
     })
 
     if (!result) {
@@ -119,7 +129,12 @@ tasksRouter.post('/', async (req: Request<FileParams>, res, next) => {
         currentVersion: result.currentVersion,
       })
     } else {
-      res.status(201).json(result)
+      if (result.file) {
+        broadcast({ type: 'file:updated', payload: { id: result.file.id, markdown: result.file.markdown } })
+        dispatchWebhookEvent(result.webhookData.event, result.webhookData.data)
+        queueEmbeddingUpdate(result.file.id, result.file.markdown, result.file.itemType)
+      }
+      res.status(201).json({ taskId: result.taskId, content: result.content })
     }
   } catch (err) {
     next(err)
@@ -147,39 +162,42 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         return { status: 409 as const, currentVersion: file.updatedAt }
       }
 
-      const { ast, columns, tasks: beforeTasks } = parseBoard(file.markdown, fileId)
-      const taskBefore = beforeTasks.find((t) => t.id === taskId)
-      const taskColumn = columns.find((c) => c.tasks.some((t) => t.id === taskId))
+      const { ast, columns, tasks: beforeTasks, taskMap } = parseBoard(file.markdown, fileId)
+      const taskBefore = taskMap.get(taskId) ?? beforeTasks.find((t) => t.id === taskId)
+      const taskColumn = columns.find((c) => flattenTasks(c.tasks).some((t) => t.id === taskId))
       let newAst = ast
       let webhookEvent: WebhookEventType | null = null
 
       switch (action) {
         case 'toggle': {
           newAst = toggleTask(ast, taskId)
-          // Auto-stamp completed-at when toggling
-          try {
-            const { tasks: parsedTasks } = extractTasksAndColumns(newAst)
-            const toggledTask = parsedTasks.find(t => t.id === taskId)
-            if (toggledTask) {
-              const today = new Date().toISOString().slice(0, 10)
-              if (toggledTask.checked) {
+          const { tasks: parsedTasks, taskMap: parsedTaskMap } = extractTasksAndColumns(newAst)
+          const toggledTask = parsedTaskMap.get(taskId) ?? parsedTasks.find(t => t.id === taskId)
+          if (toggledTask) {
+            const today = new Date().toISOString().slice(0, 10)
+            if (toggledTask.checked) {
+              try {
                 newAst = updateTaskMetadata(
                   newAst, taskId, toggledTask.displayContent,
                   { ...toggledTask.metadata, completedAt: today }
                 )
-                webhookEvent = 'task.completed'
-              } else {
+              } catch (metaErr) {
+                console.warn(`[tasks] Failed to stamp completedAt for task ${taskId}:`, metaErr)
+              }
+              webhookEvent = 'task.completed'
+            } else {
+              try {
                 if (toggledTask.metadata.completedAt) {
                   newAst = updateTaskMetadata(
                     newAst, taskId, toggledTask.displayContent,
                     { ...toggledTask.metadata, completedAt: null }
                   )
                 }
-                webhookEvent = 'task.uncompleted'
+              } catch (metaErr) {
+                console.warn(`[tasks] Failed to clear completedAt for task ${taskId}:`, metaErr)
               }
+              webhookEvent = 'task.uncompleted'
             }
-          } catch (metaErr) {
-            console.warn(`[tasks] Failed to stamp completedAt for task ${taskId}:`, metaErr)
           }
           break
         }
@@ -194,6 +212,9 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
           if (!content) {
             return { status: 400 as const, error: 'content required for updateContent' }
           }
+          if (typeof content !== 'string' || content.length > 2000) {
+            return { status: 400 as const, error: 'content must be a string of 2000 characters or less' }
+          }
           newAst = updateTaskContent(ast, taskId, content)
           webhookEvent = 'task.updated'
           break
@@ -201,14 +222,42 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
           if (!displayContent || !metadata) {
             return { status: 400 as const, error: 'displayContent and metadata required' }
           }
+          // Validate metadata structure
+          if (typeof metadata !== 'object' || Array.isArray(metadata)) {
+            return { status: 400 as const, error: 'metadata must be an object' }
+          }
+          if (metadata.priority !== undefined && metadata.priority !== null &&
+              !['high', 'medium', 'low'].includes(metadata.priority)) {
+            return { status: 400 as const, error: 'priority must be high, medium, or low' }
+          }
+          if (metadata.assignees !== undefined && !Array.isArray(metadata.assignees)) {
+            return { status: 400 as const, error: 'assignees must be an array' }
+          }
+          if (metadata.labels !== undefined && !Array.isArray(metadata.labels)) {
+            return { status: 400 as const, error: 'labels must be an array' }
+          }
+          if (metadata.dueDate !== undefined && metadata.dueDate !== null &&
+              (typeof metadata.dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(metadata.dueDate))) {
+            return { status: 400 as const, error: 'dueDate must be YYYY-MM-DD format' }
+          }
+          if (metadata.estimate !== undefined && metadata.estimate !== null &&
+              (typeof metadata.estimate !== 'number' || metadata.estimate < 0 || metadata.estimate > 9999)) {
+            return { status: 400 as const, error: 'estimate must be a number between 0 and 9999' }
+          }
           newAst = updateTaskMetadata(ast, taskId, displayContent, metadata as TaskMetadata)
           webhookEvent = 'task.updated'
           break
         case 'updateAcceptanceCriteria':
+          if (acceptanceCriteria !== undefined && acceptanceCriteria !== null && typeof acceptanceCriteria !== 'string') {
+            return { status: 400 as const, error: 'acceptanceCriteria must be a string or null' }
+          }
           newAst = updateAcceptanceCriteria(ast, taskId, acceptanceCriteria ?? null)
           webhookEvent = 'task.updated'
           break
         case 'updateLearnings':
+          if (learnings !== undefined && learnings !== null && typeof learnings !== 'string') {
+            return { status: 400 as const, error: 'learnings must be a string or null' }
+          }
           newAst = updateLearnings(ast, taskId, learnings ?? null)
           webhookEvent = 'task.updated'
           break
@@ -237,9 +286,13 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         ...(action !== 'toggle' && action !== 'move' ? { action } : {}),
       } : undefined
 
-      saveAndBroadcast(fileId, markdown, webhookEvent && whData ? { event: webhookEvent, data: whData } : undefined)
+      const savedFile = saveFile(fileId, markdown)
 
-      return { status: 200 as const }
+      return {
+        status: 200 as const,
+        file: savedFile,
+        webhookData: webhookEvent && whData ? { event: webhookEvent, data: whData } : undefined,
+      }
     })
 
     if (result.status === 404) {
@@ -252,6 +305,13 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         currentVersion: result.currentVersion,
       })
     } else {
+      if (result.file) {
+        broadcast({ type: 'file:updated', payload: { id: result.file.id, markdown: result.file.markdown } })
+        if (result.webhookData) {
+          dispatchWebhookEvent(result.webhookData.event, result.webhookData.data)
+        }
+        queueEmbeddingUpdate(result.file.id, result.file.markdown, result.file.itemType)
+      }
       res.json({ ok: true })
     }
   } catch (err) {
@@ -273,31 +333,133 @@ tasksRouter.delete('/:taskId', async (req: Request<TaskParams>, res, next) => {
       const file = storage.getFile(fileId)
       if (!file) return { status: 404 as const }
 
-      const { ast, columns, tasks: beforeTasks } = parseBoard(file.markdown, fileId)
-      const taskBefore = beforeTasks.find((t) => t.id === taskId)
-      const taskColumn = columns.find((c) => c.tasks.some((t) => t.id === taskId))
+      const { ast, columns, tasks: beforeTasks, taskMap } = parseBoard(file.markdown, fileId)
+      const taskBefore = taskMap.get(taskId) ?? beforeTasks.find((t) => t.id === taskId)
+      const taskColumn = columns.find((c) => flattenTasks(c.tasks).some((t) => t.id === taskId))
       const newAst = deleteTask(ast, taskId)
       const markdown = serializeAst(newAst)
 
-      saveAndBroadcast(fileId, markdown, {
-        event: 'task.deleted',
-        data: {
-          taskId,
-          boardId: fileId,
-          boardName: file.name,
-          taskTitle: taskBefore?.displayContent ?? '',
-          column: taskColumn?.title ?? '',
-          checked: taskBefore?.checked ?? null,
-        },
-      })
+      const savedFile = saveFile(fileId, markdown)
 
-      return { status: 204 as const }
+      return {
+        status: 204 as const,
+        file: savedFile,
+        webhookData: {
+          event: 'task.deleted' as WebhookEventType,
+          data: {
+            taskId,
+            boardId: fileId,
+            boardName: file.name,
+            taskTitle: taskBefore?.displayContent ?? '',
+            column: taskColumn?.title ?? '',
+            checked: taskBefore?.checked ?? null,
+          } as TaskEventData,
+        },
+      }
     })
 
     if (result.status === 404) {
       res.status(404).json({ error: 'Board not found' })
     } else {
+      if (result.file) {
+        broadcast({ type: 'file:updated', payload: { id: result.file.id, markdown: result.file.markdown } })
+        dispatchWebhookEvent(result.webhookData.event, result.webhookData.data)
+        queueEmbeddingUpdate(result.file.id, result.file.markdown, result.file.itemType)
+      }
       res.status(204).send()
+    }
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Batch update tasks (multiple mutations in a single write-lock)
+tasksRouter.post('/batch', async (req: Request<FileParams>, res, next) => {
+  if (!isValidId(req.params.fileId)) {
+    res.status(400).json({ error: 'Invalid board ID format' })
+    return
+  }
+
+  const { updates } = req.body
+  if (!Array.isArray(updates) || updates.length === 0) {
+    res.status(400).json({ error: 'updates array is required' })
+    return
+  }
+
+  if (updates.length > 50) {
+    res.status(400).json({ error: 'Maximum 50 updates per batch' })
+    return
+  }
+
+  const fileId = req.params.fileId
+
+  try {
+    const result = await withWriteLock(() => {
+      const file = storage.getFile(fileId)
+      if (!file) return { status: 404 as const }
+
+      const ifMatch = req.headers['if-match']
+      if (ifMatch && ifMatch !== `"${file.updatedAt}"`) {
+        return { status: 409 as const, currentVersion: file.updatedAt }
+      }
+
+      let currentAst = parseBoard(file.markdown, fileId).ast
+      const results: Array<{ taskId: string; action: string; ok: boolean; error?: string }> = []
+
+      for (const update of updates) {
+        const { taskId, action, ...params } = update
+        if (!taskId || !action) {
+          results.push({ taskId: taskId ?? 'unknown', action: action ?? 'unknown', ok: false, error: 'taskId and action required' })
+          continue
+        }
+
+        try {
+          switch (action) {
+            case 'toggle':
+              currentAst = toggleTask(currentAst, taskId)
+              break
+            case 'updateContent':
+              if (params.content) currentAst = updateTaskContent(currentAst, taskId, params.content)
+              break
+            case 'updateMetadata':
+              if (params.displayContent && params.metadata)
+                currentAst = updateTaskMetadata(currentAst, taskId, params.displayContent, params.metadata as TaskMetadata)
+              break
+            case 'move':
+              if (params.targetColumnId !== undefined && params.targetIndex !== undefined)
+                currentAst = moveTask(currentAst, taskId, params.targetColumnId, params.targetIndex)
+              break
+            case 'delete':
+              currentAst = deleteTask(currentAst, taskId)
+              break
+            default:
+              results.push({ taskId, action, ok: false, error: `Unknown action: ${action}` })
+              continue
+          }
+          results.push({ taskId, action, ok: true })
+        } catch (err) {
+          results.push({ taskId, action, ok: false, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+
+      const markdown = serializeAst(currentAst)
+      invalidateBoardCache(fileId)
+      const savedFile = storage.updateFileMarkdown(fileId, markdown)
+
+      return { status: 200 as const, results, file: savedFile }
+    })
+
+    if (result.status === 404) {
+      res.status(404).json({ error: 'Board not found' })
+    } else if (result.status === 409) {
+      res.status(409).json({ error: 'Conflict', currentVersion: result.currentVersion })
+    } else {
+      if (result.file) {
+        broadcast({ type: 'file:updated', payload: { id: result.file.id, markdown: result.file.markdown } })
+        dispatchWebhookEvent('board.updated', { boardId: result.file.id, boardName: result.file.name })
+        queueEmbeddingUpdate(result.file.id, result.file.markdown, result.file.itemType)
+      }
+      res.json({ ok: true, results: result.results })
     }
   } catch (err) {
     next(err)

@@ -185,12 +185,15 @@ export function Sidebar() {
         moveFileToProject(activeId, overProjectId)
       }
 
+      // Read fresh files from store after project move
+      const freshFiles = useFilesStore.getState().files
+
       // Now reorder: place the active file at the position of the over file
       // Get the relevant list of files (same project/group)
       const targetProjectId = overProjectId
       const relevantFiles = targetProjectId === null
-        ? files.filter((f) => f.projectId === null)
-        : files.filter((f) => f.projectId === targetProjectId)
+        ? freshFiles.filter((f) => f.projectId === null)
+        : freshFiles.filter((f) => f.projectId === targetProjectId)
 
       const oldIndex = relevantFiles.findIndex((f) => f.id === activeId)
       const newIndex = relevantFiles.findIndex((f) => f.id === overId)
@@ -202,7 +205,7 @@ export function Sidebar() {
         ids.splice(newIndex, 0, activeId)
 
         // Build the full file order: maintain other groups, replace this group
-        const otherFiles = files.filter((f) => f.projectId !== targetProjectId)
+        const otherFiles = freshFiles.filter((f) => f.projectId !== targetProjectId)
         const fullOrder = [
           ...otherFiles.map((f) => f.id),
           ...ids,
@@ -215,7 +218,7 @@ export function Sidebar() {
           .map((f) => f.id)
         idsWithoutActive.splice(newIndex, 0, activeId)
 
-        const otherFiles = files
+        const otherFiles = freshFiles
           .filter((f) => f.projectId !== targetProjectId && f.id !== activeId)
         const fullOrder = [
           ...otherFiles.map((f) => f.id),

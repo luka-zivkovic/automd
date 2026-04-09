@@ -14,6 +14,7 @@ import { toString } from 'mdast-util-to-string'
 import type { TaskMetadata } from './types.js'
 import { serializeMetadata } from './metadata-serializer.js'
 import { detectHeadingStructure } from './task-extractor.js'
+import { parseMarkdown } from './parser.js'
 
 // ─── Shared Helpers ──────────────────────────────────────────────────
 
@@ -385,12 +386,11 @@ export function updateTaskContent(
       const currentText = toString(taskHeading.node)
       const match = currentText.match(CHECKBOX_PREFIX)
       const prefix = match ? match[0] : ''
-      for (const child of taskHeading.node.children) {
-        if (child.type === 'text') {
-          ;(child as Text).value = prefix + newContent
-          break
-        }
-      }
+      // Replace all heading children with a single text node
+      // This handles headings with inline markup (links, code spans, etc.)
+      taskHeading.node.children = [
+        { type: 'text', value: prefix + newContent } as Text
+      ]
       return cloned
     }
 
@@ -462,10 +462,19 @@ export function updateTaskDescription(
       const newParagraphs: RootContent[] = description
         .split('\n')
         .filter(Boolean)
-        .map((line) => ({
-          type: 'paragraph' as const,
-          children: [{ type: 'text', value: line } as Text],
-        }))
+        .map((line) => {
+          // Parse line through remark to preserve inline markdown (bold, links, code)
+          const parsed = parseMarkdown(line)
+          const firstParagraph = parsed.children.find((c) => c.type === 'paragraph')
+          if (firstParagraph && firstParagraph.type === 'paragraph') {
+            return firstParagraph as RootContent
+          }
+          // Fallback: plain text
+          return {
+            type: 'paragraph' as const,
+            children: [{ type: 'text', value: line } as Text],
+          } as RootContent
+        })
       cloned.children.splice(
         taskHeading.rootIndex + 1,
         0,

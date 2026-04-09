@@ -18,7 +18,35 @@ export const webhooksRouter = Router()
 function isValidUrl(url: string): boolean {
   try {
     const parsed = new URL(url)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+
+    // Block internal/private network addresses
+    const hostname = parsed.hostname.toLowerCase()
+
+    // Block localhost variants
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
+      return false
+    }
+
+    // Block private IP ranges and link-local
+    // IPv4: 10.x.x.x, 172.16-31.x.x, 192.168.x.x, 169.254.x.x
+    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number)
+      if (a === 10) return false                          // 10.0.0.0/8
+      if (a === 172 && b >= 16 && b <= 31) return false   // 172.16.0.0/12
+      if (a === 192 && b === 168) return false             // 192.168.0.0/16
+      if (a === 169 && b === 254) return false             // 169.254.0.0/16 (link-local)
+      if (a === 127) return false                          // 127.0.0.0/8
+      if (a === 0) return false                            // 0.0.0.0/8
+    }
+
+    // Block IPv6 private ranges
+    if (hostname.startsWith('[') || hostname.includes(':')) {
+      return false  // Block all IPv6 for simplicity — webhook targets should use DNS names
+    }
+
+    return true
   } catch {
     return false
   }

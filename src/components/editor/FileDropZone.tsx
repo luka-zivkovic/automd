@@ -21,6 +21,8 @@ export function FileDropZone({ children }: FileDropZoneProps) {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    // Only hide when actually leaving the container, not moving between children
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
     setIsDragOver(false)
   }, [])
 
@@ -39,6 +41,10 @@ export function FileDropZone({ children }: FileDropZoneProps) {
       )
 
       if (mdFile) {
+        if (mdFile.size > 5 * 1024 * 1024) {
+          console.warn('[import] File too large (max 5 MB)')
+          return
+        }
         const text = await mdFile.text()
         importFromText(text)
       }

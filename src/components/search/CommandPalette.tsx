@@ -262,6 +262,11 @@ export function CommandPalette() {
         e.preventDefault()
         close()
         break
+      case 'Tab':
+        // Trap focus inside the palette
+        e.preventDefault()
+        inputRef.current?.focus()
+        break
     }
   }
 
@@ -313,8 +318,12 @@ export function CommandPalette() {
       onClick={(e) => {
         if (e.target === e.currentTarget) close()
       }}
+      onKeyDown={(e) => { if (e.key === 'Escape') close() }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         className="w-full max-w-lg bg-popover border border-border rounded-xl shadow-2xl overflow-hidden"
         onKeyDown={handleKeyDown}
       >

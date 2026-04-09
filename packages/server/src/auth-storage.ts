@@ -39,6 +39,13 @@ export type { ApiKeyEntry }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+let _authCache: AuthData | null = null
+
+/** Reset in-memory auth cache (for tests) */
+export function resetAuthCache(): void {
+  _authCache = null
+}
+
 // ─── File I/O ───────────────────────────────────────────────────────────
 
 function getAuthPath(): string {
@@ -51,6 +58,8 @@ function ensureDir() {
 }
 
 export function readAuth(): AuthData {
+  if (_authCache) return _authCache
+
   ensureDir()
   const authPath = getAuthPath()
   if (!fs.existsSync(authPath)) {
@@ -59,11 +68,12 @@ export function readAuth(): AuthData {
   try {
     const raw = fs.readFileSync(authPath, 'utf-8')
     const parsed = JSON.parse(raw)
-    return {
+    _authCache = {
       admin: parsed.admin ?? null,
       sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
       apiKeys: Array.isArray(parsed.apiKeys) ? parsed.apiKeys : [],
     }
+    return _authCache
   } catch (err) {
     console.error('[auth] Failed to read auth.json, resetting:', err)
     return { admin: null, sessions: [], apiKeys: [] }
@@ -77,6 +87,7 @@ function writeAuth(data: AuthData) {
   try {
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
     fs.renameSync(tmpPath, authPath)
+    _authCache = data
   } catch (err) {
     try { fs.unlinkSync(tmpPath) } catch { /* ignore */ }
     throw new Error(`Failed to write auth.json: ${err}`)
@@ -86,7 +97,7 @@ function writeAuth(data: AuthData) {
 // ─── Hashing ────────────────────────────────────────────────────────────
 
 function hashPassword(password: string, salt: string): string {
-  return crypto.scryptSync(password, salt, 64).toString('hex')
+  return crypto.scryptSync(password, salt, 64, { N: 65536, r: 8, p: 1, maxmem: 128 * 1024 * 1024 }).toString('hex')
 }
 
 function generateSalt(): string {
@@ -99,6 +110,15 @@ function generateToken(): string {
 
 function hashApiKey(key: string): string {
   return crypto.createHash('sha256').update(key).digest('hex')
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex')
+}
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
 }
 
 // ─── Status Checks ──────────────────────────────────────────────────────
@@ -131,7 +151,7 @@ export function createAdmin(email: string, password: string): { token: string; e
   const token = generateToken()
   const now = Date.now()
   const expiresAt = now + SESSION_TTL_MS
-  auth.sessions.push({ token, createdAt: now, expiresAt })
+  auth.sessions.push({ token: hashToken(token), createdAt: now, expiresAt })
 
   writeAuth(auth)
   return { token, expiresAt }
@@ -146,7 +166,7 @@ export function login(email: string, password: string): { token: string; expires
   if (auth.admin.email !== email.toLowerCase().trim()) return null
 
   const hash = hashPassword(password, auth.admin.salt)
-  if (hash !== auth.admin.passwordHash) return null
+  if (!safeCompare(hash, auth.admin.passwordHash)) return null
 
   // Clean expired sessions while we're here
   const now = Date.now()
@@ -154,7 +174,7 @@ export function login(email: string, password: string): { token: string; expires
 
   const token = generateToken()
   const expiresAt = now + SESSION_TTL_MS
-  auth.sessions.push({ token, createdAt: now, expiresAt })
+  auth.sessions.push({ token: hashToken(token), createdAt: now, expiresAt })
 
   writeAuth(auth)
   return { token, expiresAt }
@@ -162,7 +182,8 @@ export function login(email: string, password: string): { token: string; expires
 
 export function logout(token: string): void {
   const auth = readAuth()
-  auth.sessions = auth.sessions.filter((s) => s.token !== token)
+  const tokenHash = hashToken(token)
+  auth.sessions = auth.sessions.filter((s) => !safeCompare(s.token, tokenHash))
   writeAuth(auth)
 }
 
@@ -178,7 +199,8 @@ export function validateToken(token: string): boolean {
   if (!token) return false
   const auth = readAuth()
   const now = Date.now()
-  const session = auth.sessions.find((s) => s.token === token && s.expiresAt > now)
+  const tokenHash = hashToken(token)
+  const session = auth.sessions.find((s) => safeCompare(s.token, tokenHash) && s.expiresAt > now)
   return !!session
 }
 
@@ -186,12 +208,29 @@ export function validateApiKey(key: string): boolean {
   if (!key) return false
   const auth = readAuth()
   const keyHash = hashApiKey(key)
-  return auth.apiKeys.some((k) => k.keyHash === keyHash)
+  return auth.apiKeys.some((k) => safeCompare(k.keyHash, keyHash))
 }
 
 /** Validate either a session token or API key */
 export function validateCredential(credential: string): boolean {
   return validateToken(credential) || validateApiKey(credential)
+}
+
+/** Return a display identity for a valid credential, or null if invalid */
+export function getIdentityFromCredential(credential: string): string | null {
+  if (!credential) return null
+  const auth = readAuth()
+  const now = Date.now()
+
+  const tokenHash = hashToken(credential)
+  const session = auth.sessions.find((s) => safeCompare(s.token, tokenHash) && s.expiresAt > now)
+  if (session && auth.admin) return auth.admin.email
+
+  const keyHash = hashApiKey(credential)
+  const apiKey = auth.apiKeys.find((k) => safeCompare(k.keyHash, keyHash))
+  if (apiKey) return `api:${apiKey.name}`
+
+  return null
 }
 
 // ─── API Key Management ─────────────────────────────────────────────────

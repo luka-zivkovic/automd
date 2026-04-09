@@ -17,6 +17,9 @@ import { addRelationship, clearAutoRelationships, removeRelationshipsForItem } f
 let provider: EmbeddingProvider | null = null
 let store: VectorStore | null = null
 
+// Generation counter to cancel in-flight reindexes on reinit
+let _reindexGeneration = 0
+
 // Debounce timers for per-item indexing
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const DEBOUNCE_MS = 500
@@ -40,6 +43,7 @@ export function initEmbeddings(settings: AppSettings): void {
 
 /** Re-initialize after settings change. Closes old store if needed. */
 export async function reinitEmbeddings(settings: AppSettings): Promise<void> {
+  _reindexGeneration++  // Cancel any in-flight reindex
   // Close existing store
   if (store) {
     store.close()
@@ -97,11 +101,7 @@ export function queueEmbeddingUpdate(fileId: string, markdown: string, itemType?
 
 /** Remove all embeddings and relationships for a board. */
 export function removeEmbeddings(itemId: string): void {
-  if (!store) return
-  const removed = store.deleteByItemId(itemId)
-  if (removed > 0) {
-    console.log(`[embeddings] Removed ${removed} embeddings for item ${itemId}`)
-  }
+  // Always clean up relationships, even if embeddings are disabled
   try {
     const relRemoved = removeRelationshipsForItem(itemId)
     if (relRemoved > 0) {
@@ -109,6 +109,12 @@ export function removeEmbeddings(itemId: string): void {
     }
   } catch {
     // Relationships table may not exist yet on first run
+  }
+
+  if (!store) return
+  const removed = store.deleteByItemId(itemId)
+  if (removed > 0) {
+    console.log(`[embeddings] Removed ${removed} embeddings for item ${itemId}`)
   }
 }
 
@@ -161,9 +167,11 @@ export function shutdownEmbeddings(): void {
 // ─── Internal ───────────────────────────────────────────────────────────
 
 async function indexBoardSafe(fileId: string, markdown: string, itemType?: import('@automd/shared').ItemType): Promise<void> {
-  if (!provider || !store) return
+  const localStore = store
+  const localProvider = provider
+  if (!localProvider || !localStore) return
   try {
-    const result = await indexBoard(markdown, fileId, store, provider, itemType)
+    const result = await indexBoard(markdown, fileId, localStore, localProvider, itemType)
     if (result.embedded > 0 || result.removed > 0) {
       console.log(`[embeddings] Indexed board ${fileId}: ${result.embedded} embedded, ${result.removed} removed`)
     }
@@ -176,6 +184,10 @@ async function indexBoardSafe(fileId: string, markdown: string, itemType?: impor
 async function backgroundReindex(): Promise<void> {
   if (!provider || !store) return
 
+  const localStore = store
+  const localProvider = provider
+  const generation = _reindexGeneration
+
   console.log('[embeddings] Starting background reindex...')
   const files = storage.listFiles()
 
@@ -183,8 +195,13 @@ async function backgroundReindex(): Promise<void> {
   let totalRemoved = 0
 
   for (const file of files) {
+    // Abort if a newer reinit has started
+    if (_reindexGeneration !== generation) {
+      console.log('[embeddings] Reindex cancelled (settings changed)')
+      return
+    }
     try {
-      const result = await indexBoard(file.markdown, file.id, store!, provider!, file.itemType)
+      const result = await indexBoard(file.markdown, file.id, localStore, localProvider, file.itemType)
       totalEmbedded += result.embedded
       totalRemoved += result.removed
     } catch (err) {
@@ -192,10 +209,12 @@ async function backgroundReindex(): Promise<void> {
     }
   }
 
+  // Only run similarity detection if this reindex wasn't cancelled
+  if (_reindexGeneration !== generation) return
+
   console.log(`[embeddings] Reindex complete — ${totalEmbedded} embedded, ${totalRemoved} removed`)
 
-  // Auto-detect relationships from embedding similarity
-  if (store.count() > 1) {
+  if (localStore.count() > 1) {
     detectSimilarityRelationships()
   }
 }

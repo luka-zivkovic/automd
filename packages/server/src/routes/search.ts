@@ -12,8 +12,9 @@ import * as storage from '../storage.js'
 import { parseBoard } from '../board-cache.js'
 import { semanticSearch, isEmbeddingsEnabled } from '../embeddings/index.js'
 import { classifyTask } from '../embeddings/indexer.js'
-import { getRelationships } from '../relationships.js'
+import { getRelationshipsBatch } from '../relationships.js'
 import type { Task } from '@automd/shared'
+import { tokenizeForSearch } from '@automd/shared'
 import type { ContentTier } from '../embeddings/vector-store.js'
 
 export const searchRouter = Router()
@@ -41,7 +42,8 @@ searchRouter.get('/', async (req, res, next) => {
       return
     }
 
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100)
+    const rawLimit = parseInt(req.query.limit as string ?? '', 10)
+    const limit = Math.min(Number.isNaN(rawLimit) ? 20 : Math.max(1, rawLimit), 100)
     const label = (req.query.label as string || '').trim() || null
     const knowledgeOnly = req.query.knowledgeOnly === 'true'
     const compact = req.query.compact === 'true'
@@ -61,6 +63,7 @@ searchRouter.get('/', async (req, res, next) => {
 
     // 3. Merge + recency boost
     let results: SearchHit[]
+    let effectiveMode = mode
     if (mode === 'hybrid' && textResults.length > 0 && semanticResults.length > 0) {
       results = mergeWithRRF(textResults, semanticResults) // recency applied inside RRF
     } else if (mode === 'semantic') {
@@ -69,6 +72,7 @@ searchRouter.get('/', async (req, res, next) => {
     } else {
       results = applyRecencyBoost(textResults)
       results.sort((a, b) => b.score - a.score)
+      if (mode === 'hybrid') effectiveMode = 'text'  // semantic was empty, fell back
     }
 
     // 4. Tier boost: knowledge items get score premium
@@ -86,7 +90,7 @@ searchRouter.get('/', async (req, res, next) => {
 
     res.json({
       count: finalResults.length,
-      mode,
+      mode: effectiveMode,
       embeddingsEnabled: embeddingsAvailable,
       results: finalResults,
     })
@@ -96,11 +100,6 @@ searchRouter.get('/', async (req, res, next) => {
 })
 
 // ─── Text Search (BM25-lite) ────────────────────────────────────────────
-
-/** Tokenize text into lowercase words, stripping punctuation. */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(Boolean)
-}
 
 /** BM25 field weights — higher = more important. */
 const FIELD_WEIGHTS = {
@@ -190,7 +189,7 @@ function bm25Score(
 }
 
 function textSearch(query: string, labelFilter: string | null, knowledgeOnly: boolean): SearchHit[] {
-  const queryTerms = tokenize(query)
+  const queryTerms = tokenizeForSearch(query)
   if (queryTerms.length === 0) return []
 
   const files = storage.listFiles()
@@ -223,11 +222,11 @@ function textSearch(query: string, labelFilter: string | null, knowledgeOnly: bo
 
       const col = columns.find((c) => c.tasks.some((t) => t.id === task.id))
       const fields: Record<string, string[]> = {
-        title: tokenize(task.displayContent),
-        learnings: tokenize(task.learnings ?? ''),
-        tags: tokenize(allLabels.join(' ')),
-        description: tokenize(task.description ?? ''),
-        ac: tokenize(task.acceptanceCriteria ?? ''),
+        title: tokenizeForSearch(task.displayContent),
+        learnings: tokenizeForSearch(task.learnings ?? ''),
+        tags: tokenizeForSearch(allLabels.join(' ')),
+        description: tokenizeForSearch(task.description ?? ''),
+        ac: tokenizeForSearch(task.acceptanceCriteria ?? ''),
       }
 
       docs.push({
@@ -390,6 +389,7 @@ function mergeWithRRF(textHits: SearchHit[], semanticHits: SearchHit[]): SearchH
 
 const TIER_BOOST: Record<ContentTier, number> = {
   knowledge: 1.2,  // Premium: curated knowledge items get 20% boost
+  learning: 1.1,   // Moderate: tasks with learnings get 10% boost
   task: 1.0,       // Neutral: regular tasks
   page: 1.0,       // Neutral: page sections
 }
@@ -408,33 +408,28 @@ const GRAPH_BOOST = 0.10 // 10% boost for items related to other results
 function applyGraphBoost(hits: SearchHit[]): SearchHit[] {
   if (hits.length < 2) return hits
 
-  // Build a set of all result keys for quick lookup
   const resultKeys = new Set(hits.map(h => `${h.itemId}:${h.taskId}`))
 
-  // For each result, check if it has relationships to other results
-  const boosted = hits.map((hit) => {
-    try {
-      const rels = getRelationships(hit.itemId, hit.taskId)
-      const relatedInResults = rels.filter(r => resultKeys.has(`${r.itemId}:${r.taskId}`))
+  try {
+    const relMap = getRelationshipsBatch(hits.map(h => ({ itemId: h.itemId, taskId: h.taskId })))
 
+    return hits.map((hit) => {
+      const rels = relMap.get(`${hit.itemId}:${hit.taskId}`) ?? []
+      const relatedInResults = rels.filter(r => resultKeys.has(`${r.itemId}:${r.taskId}`))
       if (relatedInResults.length > 0) {
-        // Boost proportional to number of related items in results (capped)
         const boost = 1 + GRAPH_BOOST * Math.min(relatedInResults.length, 3)
         return { ...hit, score: hit.score * boost }
       }
-    } catch {
-      // Relationships not available — skip boost
-    }
-    return hit
-  })
-
-  boosted.sort((a, b) => b.score - a.score)
-  return boosted
+      return hit
+    }).sort((a, b) => b.score - a.score)
+  } catch {
+    return hits
+  }
 }
 
 // ─── Compact Results ────────────────────────────────────────────────
 
-const COMPACT_MAX_CHARS = 200
+const COMPACT_MAX_CHARS = 100
 
 function truncate(text: string | null, maxLen: number): string | null {
   if (!text) return null

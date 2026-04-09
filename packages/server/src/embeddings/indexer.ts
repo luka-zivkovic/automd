@@ -25,8 +25,11 @@ export interface EmbeddableItem {
  * Returns null if the task isn't worth embedding.
  */
 export function classifyTask(task: Task, itemType: ItemType): ContentTier | null {
-  // Tier 1: Knowledge — always embed
-  if (task.metadata.knowledge || task.learnings) return 'knowledge'
+  // Tier 1: Curated knowledge — always embed, highest boost
+  if (task.metadata.knowledge) return 'knowledge'
+
+  // Tier 1.5: Tasks with learnings — valuable but not curated
+  if (task.learnings) return 'learning'
 
   // Tier 3: Page sections — any H2 with body text
   if (itemType === 'page') {

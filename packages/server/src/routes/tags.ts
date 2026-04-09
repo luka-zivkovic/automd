@@ -24,6 +24,14 @@ tagsRouter.put('/', async (req, res, next) => {
     res.status(400).json({ error: 'tags must be an array of strings' })
     return
   }
+  if (tags.length > 500) {
+    res.status(400).json({ error: 'Maximum 500 tags allowed' })
+    return
+  }
+  if (tags.some((t: string) => t.length > 100)) {
+    res.status(400).json({ error: 'Tag names must be 100 characters or less' })
+    return
+  }
 
   try {
     const updated = await withWriteLock(() => {

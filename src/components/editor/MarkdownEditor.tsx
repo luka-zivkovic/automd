@@ -26,6 +26,12 @@ export function MarkdownEditor() {
     }, 300)
   )
 
+  useEffect(() => {
+    return () => {
+      debouncedReparse.current.cancel()
+    }
+  }, [])
+
   const onChange = useCallback(
     (value: string) => {
       isEditorOrigin.current = true

@@ -54,6 +54,7 @@ export function initS3Sync(): void {
   })
 
   console.log(`[s3-sync] Enabled — bucket: ${bucket}, prefix: "${prefix}"`)
+  console.warn('[s3-sync] WARNING: S3 sync is designed for single-instance deployments only. Running multiple server instances against the same S3 bucket will cause data loss due to concurrent write conflicts. Use a single instance or implement external coordination.')
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────
@@ -159,6 +160,17 @@ export async function hydrateFromS3(): Promise<void> {
     for (const [key, s3LastModified] of s3Objects) {
       const localPath = fromS3Key(key)
       if (localPath.endsWith('auth.json')) continue
+
+      // Security: verify path is within automd directory (prevent path traversal)
+      const resolvedPath = path.resolve(localPath)
+      if (!resolvedPath.startsWith(path.resolve(automdDir))) {
+        console.warn(`[s3-sync] Skipping suspicious key (path traversal): ${key}`)
+        continue
+      }
+
+      // Only sync known file types
+      const ext = path.extname(localPath).toLowerCase()
+      if (!['.md', '.json'].includes(ext)) continue
 
       let shouldDownload = false
       if (!fs.existsSync(localPath)) {

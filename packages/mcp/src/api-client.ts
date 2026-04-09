@@ -170,6 +170,11 @@ export const api = {
     }),
   deleteProject: (id: string) =>
     request(`/api/projects/${id}`, { method: 'DELETE' }),
+  moveFileToProject: (projectId: string, fileId: string) =>
+    request(`/api/projects/${projectId}/files`, {
+      method: 'POST',
+      body: JSON.stringify({ fileId }),
+    }),
 
   // Tags
   getTags: (projectId?: string) => {
@@ -208,14 +213,16 @@ export const api = {
     request(`/api/relationships/${itemId}/${taskId}`),
   deleteRelationship: (id: string) =>
     request(`/api/relationships/${id}`, { method: 'DELETE' }),
+  getRelationshipStats: () => request('/api/relationships/stats'),
 
   // Context Assembly
-  assembleContext: (params: { itemId?: string; taskId?: string; topic?: string; limit?: number }) => {
+  assembleContext: (params: { itemId?: string; taskId?: string; topic?: string; limit?: number; compact?: boolean }) => {
     const query = new URLSearchParams()
     if (params.itemId) query.set('itemId', params.itemId)
     if (params.taskId) query.set('taskId', params.taskId)
     if (params.topic) query.set('topic', params.topic)
     if (params.limit) query.set('limit', String(params.limit))
+    query.set('compact', String(params.compact ?? true))
     return request(`/api/context/assemble?${query.toString()}`)
   },
 

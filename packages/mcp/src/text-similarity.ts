@@ -25,7 +25,7 @@ export function tokenize(text: string): Set<string> {
 
 /** Jaccard similarity: |intersection| / |union|. Returns 0.0–1.0 */
 export function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 1.0
+  if (a.size === 0 && b.size === 0) return 0.0
   if (a.size === 0 || b.size === 0) return 0.0
 
   let intersection = 0
