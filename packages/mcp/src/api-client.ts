@@ -170,6 +170,11 @@ export const api = {
     }),
   deleteProject: (id: string) =>
     request(`/api/projects/${id}`, { method: 'DELETE' }),
+  moveFileToProject: (projectId: string, fileId: string) =>
+    request(`/api/projects/${projectId}/files`, {
+      method: 'POST',
+      body: JSON.stringify({ fileId }),
+    }),
 
   // Tags
   getTags: (projectId?: string) => {
@@ -208,6 +213,7 @@ export const api = {
     request(`/api/relationships/${itemId}/${taskId}`),
   deleteRelationship: (id: string) =>
     request(`/api/relationships/${id}`, { method: 'DELETE' }),
+  getRelationshipStats: () => request('/api/relationships/stats'),
 
   // Context Assembly
   assembleContext: (params: { itemId?: string; taskId?: string; topic?: string; limit?: number; compact?: boolean }) => {

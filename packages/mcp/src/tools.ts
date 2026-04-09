@@ -783,6 +783,59 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  server.registerTool('update_project', {
+    title: 'Update Project',
+    description: 'Update a project\'s name, color, or curated tags. Use list_projects to get project IDs.',
+    inputSchema: {
+      projectId: z.string().describe('The project ID'),
+      name: z.string().optional().describe('New project name'),
+      color: z.string().optional().describe('New color hex code (e.g. "#3b82f6")'),
+      tags: z.array(z.string()).optional().describe('Curated tag list for this project'),
+    },
+  }, async ({ projectId, name, color, tags }) => {
+    try {
+      const updates: Record<string, unknown> = {}
+      if (name !== undefined) updates.name = name
+      if (color !== undefined) updates.color = color
+      if (tags !== undefined) updates.tags = tags
+      const result = await api.updateProject(projectId, updates)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('delete_project', {
+    title: 'Delete Project',
+    description: 'Delete a project. Files in the project are NOT deleted — they become unassigned. Use list_projects to get project IDs.',
+    inputSchema: {
+      projectId: z.string().describe('The project ID to delete'),
+    },
+  }, async ({ projectId }) => {
+    try {
+      await api.deleteProject(projectId)
+      return text('Project deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('move_file_to_project', {
+    title: 'Move File to Project',
+    description: 'Move an item (board, checklist, page, knowledge base) into a project. The item\'s projectId is updated. Pass the project ID to assign, or use update_project to manage project membership.',
+    inputSchema: {
+      projectId: z.string().describe('The target project ID'),
+      fileId: z.string().describe('The file/item ID to move into the project'),
+    },
+  }, async ({ projectId, fileId }) => {
+    try {
+      const result = await api.moveFileToProject(projectId, fileId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   // ─── Tag Registry ───────────────────────────────────────────────
 
   server.registerTool('list_tags', {
@@ -794,6 +847,21 @@ export function registerTools(server: McpServer) {
   }, async ({ projectId }) => {
     try {
       const result = await api.getTags(projectId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('update_instance_tags', {
+    title: 'Update Instance Tags',
+    description: 'Set the curated instance-level tag list. These tags appear across all projects and items. Use list_tags first to see current tags.',
+    inputSchema: {
+      tags: z.array(z.string()).describe('Complete list of curated tags (replaces existing). Tags are normalized to lowercase.'),
+    },
+  }, async ({ tags }) => {
+    try {
+      const result = await api.updateInstanceTags(tags)
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -1167,6 +1235,33 @@ export function registerTools(server: McpServer) {
   }, async ({ itemId, taskId }) => {
     try {
       const result = await api.getRelationships(itemId, taskId)
+      return json(result)
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('delete_relationship', {
+    title: 'Delete Relationship',
+    description: 'Remove a relationship between two tasks. Use get_related to find relationship IDs.',
+    inputSchema: {
+      relationshipId: z.string().describe('The relationship ID (from get_related response)'),
+    },
+  }, async ({ relationshipId }) => {
+    try {
+      await api.deleteRelationship(relationshipId)
+      return text('Relationship deleted')
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('get_relationship_stats', {
+    title: 'Get Relationship Stats',
+    description: 'Get statistics about the relationship graph: total relationships, auto-detected count, and manually created count.',
+  }, async () => {
+    try {
+      const result = await api.getRelationshipStats()
       return json(result)
     } catch (err) {
       return errorResponse(err)
