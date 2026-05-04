@@ -16,6 +16,7 @@ import { ConnectView } from '@/components/connect/ConnectView'
 import { SettingsView } from '@/components/settings/SettingsView'
 import { AgentListView } from '@/components/agents/AgentListView'
 import { AgentDetailView } from '@/components/agents/AgentDetailView'
+import { InboxView } from '@/components/inbox/InboxView'
 import { FileDropZone } from '@/components/editor/FileDropZone'
 import { TaskDetailPanel } from '@/components/detail/TaskDetailPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -146,6 +147,8 @@ function App() {
                 <>
                   {activeView === 'settings' ? (
                     <SettingsView />
+                  ) : activeView === 'inbox' ? (
+                    <InboxView />
                   ) : activeView === 'agents' ? (
                     <AgentListView />
                   ) : activeView === 'memory' ? (

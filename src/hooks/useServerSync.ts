@@ -5,6 +5,7 @@ import { useConnectionStore } from '@/store/connection-store'
 import { useUserStore } from '@/store/user-store'
 import { useAuthStore } from '@/store/auth-store'
 import { useActivityStore } from '@/store/activity-store'
+import { useAgentsStore } from '@/store/agents-store'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 import { toast } from 'sonner'
 import { apiFetch, WS_BASE, HAS_SERVER } from '@/lib/api'
@@ -269,6 +270,41 @@ export function useServerSync() {
               if (Array.isArray(agents)) {
                 useConnectionStore.getState().setAgents(agents)
               }
+              break
+            }
+            case 'comment:added': {
+              const { fileId, comment } = msg.payload
+              const file = useFilesStore.getState().files.find(f => f.id === fileId)
+              useActivityStore.getState().addEvent({
+                type: 'comment:added',
+                description: `New comment from @${comment?.author ?? 'someone'}`,
+                actor: comment?.author ?? 'Someone',
+                timestamp: Date.now(),
+                fileId,
+                fileName: file?.name,
+              })
+              if (comment?.mentions?.length) {
+                toast.message('New mention', {
+                  description: comment.body,
+                })
+              }
+              break
+            }
+            case 'task:reopened': {
+              const { itemId, itemName, taskTitle, agentSlug } = msg.payload
+              useActivityStore.getState().addEvent({
+                type: 'task:reopened',
+                description: `Reopened "${taskTitle}"`,
+                actor: agentSlug ?? 'Someone',
+                timestamp: Date.now(),
+                fileId: itemId,
+                fileName: itemName,
+              })
+              break
+            }
+            case 'agent:created':
+            case 'agent:updated': {
+              useAgentsStore.getState().loadAgents()
               break
             }
           }

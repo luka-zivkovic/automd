@@ -85,7 +85,7 @@ function parseCommentLine(taskId: string, line: string): Comment | null {
   return { id: match[3], taskId, author: match[1], createdAt: match[2], body: match[4], mentions: mentions(match[4]) }
 }
 
-function listCommentsFromAst(ast: any, taskId: string): Comment[] {
+export function listCommentsFromAst(ast: any, taskId: string): Comment[] {
   const found = findTaskHeading(ast, taskId)
   if (!found) return []
   const end = findTaskEnd(ast, found.index)
