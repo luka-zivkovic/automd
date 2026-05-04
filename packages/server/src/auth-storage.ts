@@ -24,6 +24,7 @@ interface ApiKeyEntry {
   name: string
   keyHash: string
   keyPrefix: string
+  agentId?: string | null
   createdAt: number
 }
 
@@ -50,6 +51,10 @@ export function resetAuthCache(): void {
 
 function getAuthPath(): string {
   return path.join(getAutomdDir(), 'auth.json')
+}
+
+function getSetupMarkerPath(): string {
+  return path.join(getAutomdDir(), '.auth-setup-complete')
 }
 
 function ensureDir() {
@@ -94,6 +99,14 @@ function writeAuth(data: AuthData) {
   }
 }
 
+function writeSetupMarker() {
+  ensureDir()
+  const markerPath = getSetupMarkerPath()
+  if (!fs.existsSync(markerPath)) {
+    fs.writeFileSync(markerPath, new Date().toISOString() + '\n', 'utf-8')
+  }
+}
+
 // ─── Hashing ────────────────────────────────────────────────────────────
 
 function hashPassword(password: string, salt: string): string {
@@ -127,6 +140,14 @@ export function isSetupComplete(): boolean {
   return readAuth().admin !== null
 }
 
+export function wasSetupEverCompleted(): boolean {
+  return fs.existsSync(getSetupMarkerPath()) || readAuth().admin !== null
+}
+
+export function isSetupLockedWithoutAuth(): boolean {
+  return wasSetupEverCompleted() && readAuth().admin === null
+}
+
 export function isAuthDisabled(): boolean {
   return process.env.AUTOMD_DISABLE_AUTH === 'true'
 }
@@ -154,6 +175,7 @@ export function createAdmin(email: string, password: string): { token: string; e
   auth.sessions.push({ token: hashToken(token), createdAt: now, expiresAt })
 
   writeAuth(auth)
+  writeSetupMarker()
   return { token, expiresAt }
 }
 
@@ -233,9 +255,17 @@ export function getIdentityFromCredential(credential: string): string | null {
   return null
 }
 
+export function getAgentIdFromCredential(credential: string): string | null {
+  if (!credential) return null
+  const auth = readAuth()
+  const keyHash = hashApiKey(credential)
+  const apiKey = auth.apiKeys.find((k) => safeCompare(k.keyHash, keyHash))
+  return apiKey?.agentId ?? null
+}
+
 // ─── API Key Management ─────────────────────────────────────────────────
 
-export function createApiKey(name: string): { id: string; name: string; keyPrefix: string; fullKey: string; createdAt: number } {
+export function createApiKey(name: string, agentId?: string | null): { id: string; name: string; keyPrefix: string; fullKey: string; agentId?: string | null; createdAt: number } {
   const auth = readAuth()
   const id = nanoid(10)
   const rawKey = crypto.randomBytes(24).toString('hex')
@@ -243,16 +273,16 @@ export function createApiKey(name: string): { id: string; name: string; keyPrefi
   const keyHash = hashApiKey(fullKey)
   const keyPrefix = fullKey.slice(0, 12) // "amd_" + first 8 hex chars
 
-  const entry: ApiKeyEntry = { id, name, keyHash, keyPrefix, createdAt: Date.now() }
+  const entry: ApiKeyEntry = { id, name, keyHash, keyPrefix, agentId: agentId ?? null, createdAt: Date.now() }
   auth.apiKeys.push(entry)
   writeAuth(auth)
 
-  return { id, name, keyPrefix, fullKey, createdAt: entry.createdAt }
+  return { id, name, keyPrefix, fullKey, agentId: entry.agentId, createdAt: entry.createdAt }
 }
 
-export function listApiKeys(): Array<{ id: string; name: string; keyPrefix: string; createdAt: number }> {
+export function listApiKeys(): Array<{ id: string; name: string; keyPrefix: string; agentId?: string | null; createdAt: number }> {
   const auth = readAuth()
-  return auth.apiKeys.map(({ id, name, keyPrefix, createdAt }) => ({ id, name, keyPrefix, createdAt }))
+  return auth.apiKeys.map(({ id, name, keyPrefix, agentId, createdAt }) => ({ id, name, keyPrefix, agentId, createdAt }))
 }
 
 export function deleteApiKey(id: string): boolean {

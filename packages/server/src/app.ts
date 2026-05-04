@@ -13,10 +13,12 @@ import { tagsRouter } from './routes/tags.js'
 import { settingsRouter } from './routes/settings.js'
 import { searchRouter } from './routes/search.js'
 import { relationshipsRouter } from './routes/relationships.js'
+import { agentsRouter } from './routes/agents.js'
+import { commentsRouter } from './routes/comments.js'
 import { getStoragePath, StorageError } from './storage.js'
 import { getUpdateInfo } from './update-check.js'
 import { requireAuth } from './auth-middleware.js'
-import { isSetupComplete, isAuthDisabled } from './auth-storage.js'
+import { isSetupComplete, isAuthDisabled, isSetupLockedWithoutAuth } from './auth-storage.js'
 import { getS3SyncStatus } from './s3-sync.js'
 import { getEmbeddingsStatus } from './embeddings/index.js'
 import { countRelationships } from './relationships.js'
@@ -37,7 +39,8 @@ export function createApp() {
     res.json({
       status: 'ok',
       storage: 'ok',
-      authRequired: isSetupComplete() && !isAuthDisabled(),
+      authRequired: (isSetupComplete() || isSetupLockedWithoutAuth()) && !isAuthDisabled(),
+      authLocked: isSetupLockedWithoutAuth(),
       s3: getS3SyncStatus(),
       embeddings: getEmbeddingsStatus(),
       relationships,
@@ -55,9 +58,10 @@ export function createApp() {
   app.use('/api', requireAuth)
 
   // Protected routes
-  app.use('/api/files', filesRouter)
+  app.use('/api/files/:fileId/tasks/:taskId/comments', commentsRouter)
   app.use('/api/files/:fileId/tasks', tasksRouter)
   app.use('/api/files/:fileId/columns', columnsRouter)
+  app.use('/api/files', filesRouter)
   app.use('/api/projects', projectsRouter)
   app.use('/api/context', contextRouter)
   app.use('/api/tags', tagsRouter)
@@ -65,6 +69,7 @@ export function createApp() {
   app.use('/api/settings', settingsRouter)
   app.use('/api/search', searchRouter)
   app.use('/api/relationships', relationshipsRouter)
+  app.use('/api/agents', agentsRouter)
 
   // In production, serve the Vite-built frontend as static files
   if (process.env.NODE_ENV === 'production') {

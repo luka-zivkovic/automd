@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express'
-import { isAuthDisabled, isSetupComplete, validateCredential } from './auth-storage.js'
+import { isAuthDisabled, isSetupComplete, isSetupLockedWithoutAuth, validateCredential } from './auth-storage.js'
 
 /**
  * Express middleware: requires authentication on protected routes.
@@ -10,6 +10,11 @@ import { isAuthDisabled, isSetupComplete, validateCredential } from './auth-stor
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   if (isAuthDisabled()) {
     next()
+    return
+  }
+
+  if (isSetupLockedWithoutAuth()) {
+    res.status(503).json({ error: 'Authentication data is missing but setup was previously completed. Restore auth.json or reset storage intentionally.' })
     return
   }
 

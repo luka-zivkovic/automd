@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express'
 import {
   serializeAst,
+  addColumn,
   renameColumn,
   deleteColumn,
 } from '@automd/shared'
@@ -19,6 +20,57 @@ function saveFile(fileId: string, markdown: string) {
   invalidateBoardCache(fileId)
   return storage.updateFileMarkdown(fileId, markdown)
 }
+
+// Add a column
+columnsRouter.post('/', async (req: Request<{ fileId: string }>, res, next) => {
+  if (!isValidId(req.params.fileId)) {
+    res.status(400).json({ error: 'Invalid board ID format' })
+    return
+  }
+
+  const { title } = req.body
+  if (!title || typeof title !== 'string') {
+    res.status(400).json({ error: 'title is required' })
+    return
+  }
+  const safeTitle = title.replace(/[\r\n]/g, ' ').trim().slice(0, 200)
+  if (!safeTitle) {
+    res.status(400).json({ error: 'title cannot be empty' })
+    return
+  }
+
+  try {
+    const result = await withWriteLock(() => {
+      const file = storage.getFile(req.params.fileId)
+      if (!file) return { status: 404 as const }
+
+      const ifMatch = req.headers['if-match']
+      if (ifMatch && ifMatch !== `"${file.updatedAt}"`) {
+        return { status: 409 as const, currentVersion: file.updatedAt }
+      }
+
+      const { ast } = parseBoard(file.markdown, req.params.fileId)
+      const newAst = addColumn(ast, safeTitle)
+      const markdown = serializeAst(newAst)
+      const savedFile = saveFile(req.params.fileId, markdown)
+      return { status: 201 as const, file: savedFile }
+    })
+
+    if (result.status === 404) {
+      res.status(404).json({ error: 'Board not found' })
+    } else if (result.status === 409) {
+      res.status(409).json({ error: 'Conflict: board was modified', currentVersion: result.currentVersion })
+    } else {
+      if (result.file) {
+        broadcast({ type: 'file:updated', payload: { id: result.file.id, markdown: result.file.markdown } })
+        dispatchWebhookEvent('board.updated', { boardId: result.file.id, boardName: result.file.name })
+      }
+      res.status(201).json({ ok: true, markdown: result.file?.markdown })
+    }
+  } catch (err) {
+    next(err)
+  }
+})
 
 // Rename a column
 columnsRouter.patch('/:columnId', async (req: Request<ColumnParams>, res, next) => {

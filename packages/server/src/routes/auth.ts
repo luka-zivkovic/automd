@@ -2,6 +2,8 @@ import { Router } from 'express'
 import {
   isAuthDisabled,
   isSetupComplete,
+  isSetupLockedWithoutAuth,
+  wasSetupEverCompleted,
   createAdmin,
   login,
   logout,
@@ -13,6 +15,7 @@ import {
 import { requireAuth, extractToken } from '../auth-middleware.js'
 import { isValidName } from '../validation.js'
 import { withWriteLock } from '../write-lock.js'
+import { recordAuthAudit } from '../auth-audit.js'
 
 export const authRouter = Router()
 
@@ -51,9 +54,11 @@ export function resetRateLimiter(): void {
 
 // Status — always public
 authRouter.get('/status', (_req, res) => {
+  const locked = isSetupLockedWithoutAuth()
   res.json({
-    setupComplete: isSetupComplete(),
-    authEnabled: isSetupComplete() && !isAuthDisabled(),
+    setupComplete: isSetupComplete() || locked,
+    setupLocked: locked,
+    authEnabled: (isSetupComplete() || locked) && !isAuthDisabled(),
   })
 })
 
@@ -76,8 +81,9 @@ authRouter.post('/setup', async (req, res) => {
 
   try {
     const result = await withWriteLock(() => {
-      if (isSetupComplete()) {
-        return { error: 'Admin account already exists.' as const }
+      if (isSetupComplete() || wasSetupEverCompleted()) {
+        recordAuthAudit('setup.blocked', { ip: clientIp })
+        return { error: 'Admin account already exists or setup was previously completed.' as const }
       }
       return createAdmin(email, password)
     })
@@ -85,6 +91,7 @@ authRouter.post('/setup', async (req, res) => {
     if ('error' in result) {
       res.status(403).json({ error: result.error })
     } else {
+      recordAuthAudit('setup.created', { email: email.toLowerCase().trim(), ip: clientIp })
       res.status(201).json(result)
     }
   } catch (err) {
@@ -111,10 +118,12 @@ authRouter.post('/login', (req, res) => {
 
   const result = login(email, password)
   if (!result) {
+    recordAuthAudit('login.failure', { email: typeof email === 'string' ? email.toLowerCase().trim() : undefined, ip: clientIp })
     res.status(401).json({ error: 'Invalid email or password.' })
     return
   }
 
+  recordAuthAudit('login.success', { email: email.toLowerCase().trim(), ip: clientIp })
   res.json(result)
 })
 
@@ -123,6 +132,7 @@ authRouter.post('/logout', requireAuth, (req, res) => {
   const token = extractToken(req.headers.authorization)
   if (token) {
     logout(token)
+    recordAuthAudit('logout')
   }
   res.status(204).end()
 })
@@ -144,14 +154,15 @@ authRouter.get('/api-keys', requireAuth, (_req, res) => {
 
 // Create API key — requires auth
 authRouter.post('/api-keys', requireAuth, (req, res) => {
-  const { name } = req.body
+  const { name, agentId } = req.body
   if (!name || typeof name !== 'string' || !isValidName(name)) {
     res.status(400).json({ error: 'A valid name is required (1-200 characters).' })
     return
   }
 
   try {
-    const result = createApiKey(name.trim())
+    const result = createApiKey(name.trim(), typeof agentId === 'string' ? agentId : null)
+    recordAuthAudit('api_key.created', { id: result.id, name: result.name })
     res.status(201).json(result)
   } catch (err) {
     res.status(500).json({ error: 'Failed to create API key.' })
@@ -166,5 +177,6 @@ authRouter.delete('/api-keys/:id', requireAuth, (req, res) => {
     res.status(404).json({ error: 'API key not found.' })
     return
   }
+  recordAuthAudit('api_key.deleted', { id })
   res.status(204).end()
 })

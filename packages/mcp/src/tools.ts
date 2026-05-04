@@ -203,6 +203,115 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  server.registerTool('get_my_tasks', {
+    title: 'Get My Tasks',
+    description: 'List tasks claimed by the agent bound to this MCP API key.',
+    inputSchema: {
+      status: z.enum(['open', 'done']).optional().describe('Optional status filter'),
+    },
+  }, async ({ status }) => {
+    try {
+      return json(await api.getMyTasks(status))
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('claim_task', {
+    title: 'Claim Task',
+    description: 'Claim a task for the agent bound to this MCP API key. Fails with 409 if another active agent has claimed it.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+    },
+  }, async ({ itemId, taskId }) => {
+    try {
+      return json(await api.claimTask(itemId, taskId))
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('release_task', {
+    title: 'Release Task',
+    description: 'Release a task claimed by the agent bound to this MCP API key.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+      reason: z.string().optional().describe('Optional release reason'),
+    },
+  }, async ({ itemId, taskId, reason }) => {
+    try {
+      return json(await api.releaseTask(itemId, taskId, reason))
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('add_comment', {
+    title: 'Add Comment',
+    description: 'Add a markdown comment under a task. Use for progress updates, questions, and review notes.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+      body: z.string().describe('Comment body'),
+      author: z.string().regex(/^[\w-]+$/).optional().describe('Author slug; defaults to AUTOMD_AGENT_ID or agent'),
+    },
+  }, async ({ itemId, taskId, body, author }) => {
+    try {
+      const who = author ?? process.env.AUTOMD_AGENT_ID ?? 'agent'
+      return json(await api.addComment(itemId, taskId, who, body))
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('list_comments', {
+    title: 'List Comments',
+    description: 'List comments under a task.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+    },
+  }, async ({ itemId, taskId }) => {
+    try {
+      return json(await api.listComments(itemId, taskId))
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
+  server.registerTool('request_help', {
+    title: 'Request Help',
+    description: 'Ask for human help on a task by posting a comment and adding a help-wanted label.',
+    inputSchema: {
+      itemId: z.string().describe('The item/board ID'),
+      taskId: z.string().describe('The task ID'),
+      question: z.string().describe('Question or blocker to raise'),
+    },
+  }, async ({ itemId, taskId, question }) => {
+    try {
+      const who = process.env.AUTOMD_AGENT_ID ?? 'agent'
+      const comment = await api.addComment(itemId, taskId, who, `Help needed: ${question}`)
+      const item = await api.getFile(itemId)
+      const task = item.columns
+        .flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
+        .find((t: ApiTask) => t.id === taskId)
+      let labelUpdated = false
+      if (task && !task.metadata.labels.some((l) => l.toLowerCase() === 'help-wanted')) {
+        await api.updateTask(itemId, taskId, {
+          action: 'updateMetadata',
+          displayContent: task.displayContent,
+          metadata: { ...task.metadata, labels: [...task.metadata.labels, 'help-wanted'] },
+        })
+        labelUpdated = true
+      }
+      return json({ ok: true, comment, labelUpdated })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   server.registerTool('create_item', {
     title: 'Create Item',
     description: 'Create a new board, checklist, page, or knowledge base. Boards use # (H1) for columns and ## (H2) for tasks. Checklists use ## (H2) with [ ]/[x] prefixes. Pages are free-form markdown. Knowledge bases are structured collections of entries (## H2) without checkboxes or progress — ideal for decisions, patterns, and reference material. All support YAML frontmatter, descriptions, blockquotes (>) for acceptance criteria, and GFM checkboxes for subtasks.',
@@ -367,9 +476,7 @@ export function registerTools(server: McpServer) {
       const safeTitle = title.replace(/[\r\n]/g, ' ').trim().slice(0, 200)
       if (!safeTitle) return errorResponse(new Error('Column title cannot be empty'))
 
-      const item = await api.getFile(itemId)
-      const newMarkdown = item.markdown.trimEnd() + `\n\n# ${safeTitle}\n\n`
-      const result = await api.updateFile(itemId, { markdown: newMarkdown })
+      const result = await api.addColumn(itemId, safeTitle)
       return json(result)
     } catch (err) {
       return errorResponse(err)
@@ -562,65 +669,27 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, assignee, label, checked, limit }) => {
     try {
-      const items = await api.listFiles()
-      const results: Array<{
-        itemId: string
-        itemName: string
-        taskId: string
-        title: string
-        labels: string[]
-        column: string
-        checked: boolean | null
-        relevance: number
-      }> = []
-
-      const queryTokens = query ? tokenizeForSearch(query) : []
-      const queryLower = query?.toLowerCase()
-
-      for (const itemSummary of items) {
-        try {
-          const item = await api.getFile(itemSummary.id)
-          for (const column of item.columns) {
-            for (const task of flattenApiTasks(column.tasks)) {
-              if (assignee && !task.metadata.assignees.includes(assignee)) continue
-              if (label && !task.metadata.labels.some(l => l.toLowerCase() === label.toLowerCase())) continue
-              if (checked !== undefined && task.checked !== checked) continue
-
-              let relevance = 1.0
-              if (query) {
-                if (queryTokens.length > 0) {
-                  const docTokens = tokenizeForSearch(task.content)
-                  relevance = computeScore(queryTokens, docTokens)
-                  if (relevance < 0.3) continue
-                } else if (queryLower) {
-                  // Fallback to substring for stop-word-only queries
-                  if (!task.content.toLowerCase().includes(queryLower)) continue
-                }
-              }
-
-              results.push({
-                itemId: itemSummary.id,
-                itemName: itemSummary.name,
-                taskId: task.id,
-                title: task.displayContent,
-                labels: task.metadata.labels,
-                column: column.title,
-                checked: task.checked,
-                relevance: Math.round(relevance * 100) / 100,
-              })
-            }
-          }
-        } catch (err) {
-          console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
-        }
-      }
-
-      // Sort by relevance descending, then limit
-      results.sort((a, b) => b.relevance - a.relevance)
-      const maxResults = limit ?? 20
-      const limitedResults = results.slice(0, maxResults)
-
-      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
+      const searchResults = await api.search({
+        q: query,
+        assignee,
+        label,
+        checked,
+        limit: limit ?? 20,
+        compact: true,
+      })
+      const results = (searchResults.results ?? []).map((r: any) => ({
+        itemId: r.itemId,
+        itemName: r.itemName,
+        taskId: r.taskId,
+        title: r.title,
+        labels: r.labels,
+        column: r.column,
+        checked: r.checked,
+        relevance: r.score ?? 1,
+        matchType: r.matchType,
+        tier: r.tier,
+      }))
+      return json({ count: results.length, total: searchResults.count, mode: searchResults.mode, results })
     } catch (err) {
       return errorResponse(err)
     }
@@ -638,98 +707,34 @@ export function registerTools(server: McpServer) {
     },
   }, async ({ query, label, completedOnly, detail, limit }) => {
     try {
-      // Try hybrid search when embeddings are available and we have a text query
-      if (query && await serverHasSearch()) {
-        try {
-          const searchResults = await api.search({ q: query, label: label ?? undefined, compact: true })
-          let filteredResults = searchResults.results
-          if (completedOnly) {
-            filteredResults = filteredResults.filter((r: any) => r.checked === true)
-          }
-          const maxResults = limit ?? 20
-          filteredResults = filteredResults.slice(0, maxResults)
-          return json({ count: filteredResults.length, total: searchResults.count, results: filteredResults, mode: searchResults.mode })
-        } catch {
-          // Fall through to legacy search
-        }
-      }
-
-      const items = await api.listFiles()
-      const results: any[] = []
-
-      const queryTokens = query ? tokenizeForSearch(query) : []
-      const queryLower = query?.toLowerCase()
-
-      for (const itemSummary of items) {
-        try {
-          const item = await api.getFile(itemSummary.id)
-          for (const column of item.columns) {
-            for (const task of flattenApiTasks(column.tasks)) {
-              if (completedOnly && !task.checked) continue
-
-              // Build searchable text from all fields (including frontmatter tags)
-              const searchable = [
-                task.content,
-                task.description,
-                task.acceptanceCriteria,
-                task.learnings,
-                ...(item.meta?.tags ?? []),
-              ].filter(Boolean).join(' ')
-
-              let relevance = 1.0
-              if (query) {
-                if (queryTokens.length > 0) {
-                  const docTokens = tokenizeForSearch(searchable)
-                  relevance = computeScore(queryTokens, docTokens)
-                  if (relevance < 0.3) continue
-                } else if (queryLower) {
-                  if (!searchable.toLowerCase().includes(queryLower)) continue
-                }
-              }
-
-              if (label) {
-                const hasLabel = task.metadata.labels.some(l => l.toLowerCase() === label.toLowerCase())
-                const hasInlineLabelTag = searchable.toLowerCase().includes(`#${label.toLowerCase()}`)
-                const hasFrontmatterTag = item.meta?.tags?.some(
-                  (t: string) => t.toLowerCase() === label.toLowerCase()
-                )
-                if (!hasLabel && !hasInlineLabelTag && !hasFrontmatterTag) continue
-              }
-
-              // Only include results that have some knowledge content
-              const hasContext = task.description || task.acceptanceCriteria || task.learnings
-              if (!hasContext) continue
-
-              results.push({
-                itemId: itemSummary.id,
-                itemName: itemSummary.name,
-                taskId: task.id,
-                title: task.displayContent,
-                labels: task.metadata.labels,
-                column: column.title,
-                checked: task.checked,
-                ...(detail ? {
-                  description: task.description,
-                  acceptanceCriteria: task.acceptanceCriteria,
-                  learnings: task.learnings,
-                } : {
-                  snippet: task.description ? task.description.slice(0, 100) : null,
-                }),
-                relevance: Math.round(relevance * 100) / 100,
-              })
-            }
-          }
-        } catch (err) {
-          console.error(`[mcp] Failed to search item ${itemSummary.id}:`, err)
-        }
-      }
-
-      // Sort by relevance descending, then limit
-      results.sort((a, b) => b.relevance - a.relevance)
-      const maxResults = limit ?? 20
-      const limitedResults = results.slice(0, maxResults)
-
-      return json({ count: limitedResults.length, total: results.length, results: limitedResults })
+      const searchResults = await api.search({
+        q: query,
+        label,
+        checked: completedOnly ? true : undefined,
+        hasContext: true,
+        limit: limit ?? 20,
+        compact: !detail,
+      })
+      const results = (searchResults.results ?? []).map((r: any) => ({
+        itemId: r.itemId,
+        itemName: r.itemName,
+        taskId: r.taskId,
+        title: r.title,
+        labels: r.labels,
+        column: r.column,
+        checked: r.checked,
+        ...(detail ? {
+          description: r.description,
+          acceptanceCriteria: r.acceptanceCriteria,
+          learnings: r.learnings,
+        } : {
+          snippet: r.description ?? r.acceptanceCriteria ?? r.learnings ?? null,
+        }),
+        relevance: r.score ?? 1,
+        matchType: r.matchType,
+        tier: r.tier,
+      }))
+      return json({ count: results.length, total: searchResults.count, mode: searchResults.mode, results })
     } catch (err) {
       return errorResponse(err)
     }

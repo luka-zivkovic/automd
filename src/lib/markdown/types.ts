@@ -8,4 +8,8 @@ export type {
   ItemType,
   BoardVocabulary,
   Project,
+  Agent,
+  AgentRuntime,
+  AgentStatus,
+  Comment,
 } from '@automd/shared'

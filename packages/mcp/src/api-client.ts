@@ -148,6 +148,11 @@ export const api = {
   },
 
   // Columns
+  addColumn: (fileId: string, title: string) =>
+    request(`/api/files/${fileId}/columns`, {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    }),
   renameColumn: (fileId: string, columnId: string, title: string) =>
     request(`/api/files/${fileId}/columns/${columnId}`, {
       method: 'PATCH',
@@ -189,13 +194,16 @@ export const api = {
     }),
 
   // Search (hybrid: text + semantic when embeddings enabled)
-  search: (params: { q: string; mode?: string; limit?: number; label?: string; knowledgeOnly?: boolean; compact?: boolean }) => {
+  search: (params: { q?: string; mode?: string; limit?: number; label?: string; assignee?: string; checked?: boolean; knowledgeOnly?: boolean; hasContext?: boolean; compact?: boolean }) => {
     const query = new URLSearchParams()
-    query.set('q', params.q)
+    if (params.q) query.set('q', params.q)
     if (params.mode) query.set('mode', params.mode)
     if (params.limit) query.set('limit', String(params.limit))
     if (params.label) query.set('label', params.label)
+    if (params.assignee) query.set('assignee', params.assignee)
+    if (params.checked !== undefined) query.set('checked', String(params.checked))
     if (params.knowledgeOnly) query.set('knowledgeOnly', 'true')
+    if (params.hasContext) query.set('hasContext', 'true')
     if (params.compact) query.set('compact', 'true')
     return request(`/api/search?${query.toString()}`)
   },
@@ -228,4 +236,24 @@ export const api = {
 
   // Health
   health: () => request('/api/health'),
+
+  // Agents
+  getMyAgent: () => request('/api/agents/me'),
+  getMyTasks: (status?: string) => request(`/api/agents/me/tasks${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  claimTask: (itemId: string, taskId: string) =>
+    request('/api/agents/me/claim', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, taskId }),
+    }),
+  releaseTask: (itemId: string, taskId: string, reason?: string) =>
+    request('/api/agents/me/release', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, taskId, reason }),
+    }),
+  listComments: (fileId: string, taskId: string) => request(`/api/files/${fileId}/tasks/${taskId}/comments`),
+  addComment: (fileId: string, taskId: string, author: string, body: string) =>
+    request(`/api/files/${fileId}/tasks/${taskId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ author, body }),
+    }),
 }

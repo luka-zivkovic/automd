@@ -2,9 +2,14 @@ import { toString } from 'mdast-util-to-string'
 import type { Root, Heading, List, ListItem, RootContent, Blockquote } from 'mdast'
 import type { Task, Column } from './types.js'
 import { parseMetadata } from './metadata-parser.js'
+import { serializeAst } from './serializer.js'
 
 const UNCATEGORIZED_ID = '__uncategorized__'
 const UNCATEGORIZED_TITLE = 'Tasks'
+
+function nodeToMarkdown(node: RootContent): string {
+  return serializeAst({ type: 'root', children: [node] }).trim()
+}
 
 // ─── Heading Structure Detection ─────────────────────────────────────
 
@@ -86,7 +91,7 @@ function extractListItemDescription(node: ListItem): string | null {
         isFirst = false
         continue
       }
-      paragraphs.push(toString(child))
+      paragraphs.push(nodeToMarkdown(child as RootContent))
     }
   }
   return paragraphs.length > 0 ? paragraphs.join('\n') : null
@@ -216,7 +221,7 @@ function extractHeadingTask(
         // Any other H3+ subsection: capture heading text into description, exit learnings
         inLearnings = false
         consumed++
-        descriptionParts.push(toString(node as Heading))
+        descriptionParts.push(nodeToMarkdown(node as RootContent))
         continue
       }
 
@@ -224,7 +229,7 @@ function extractHeadingTask(
       if (d > 3) {
         inLearnings = false
         consumed++
-        descriptionParts.push(toString(node as Heading))
+        descriptionParts.push(nodeToMarkdown(node as RootContent))
         continue
       }
     }
@@ -243,7 +248,7 @@ function extractHeadingTask(
         learningsParts.push(toString(node))
       }
     } else if (node.type === 'paragraph') {
-      descriptionParts.push(toString(node))
+      descriptionParts.push(nodeToMarkdown(node as RootContent))
     } else if (node.type === 'blockquote') {
       acParts.push(toString(node as Blockquote))
     } else if (node.type === 'list') {

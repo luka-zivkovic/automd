@@ -14,6 +14,8 @@ import { MemoryView } from '@/components/memory/MemoryView'
 import { PromptLibrary } from '@/components/prompts/PromptLibrary'
 import { ConnectView } from '@/components/connect/ConnectView'
 import { SettingsView } from '@/components/settings/SettingsView'
+import { AgentListView } from '@/components/agents/AgentListView'
+import { AgentDetailView } from '@/components/agents/AgentDetailView'
 import { FileDropZone } from '@/components/editor/FileDropZone'
 import { TaskDetailPanel } from '@/components/detail/TaskDetailPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -144,6 +146,8 @@ function App() {
                 <>
                   {activeView === 'settings' ? (
                     <SettingsView />
+                  ) : activeView === 'agents' ? (
+                    <AgentListView />
                   ) : activeView === 'memory' ? (
                     <MemoryView />
                   ) : activeView === 'connect' ? (
@@ -167,6 +171,7 @@ function App() {
               )}
             </main>
             <ActivityFeed />
+            <AgentDetailView />
           </div>
           <TaskDetailPanel />
         </div>

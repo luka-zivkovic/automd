@@ -96,6 +96,7 @@ All settings have sensible defaults — no `.env` file is needed for basic usage
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AUTOMD_PORT` | `4800` | API server port |
+| `AUTOMD_HOST` | loopback when auth is disabled, otherwise default Node bind | Optional API bind host. Non-loopback is refused when auth is disabled |
 | `VITE_AUTOMD_SERVER` | same-origin | Override frontend server URL (for remote API) |
 | `VITE_LOCAL_ONLY` | `false` | Disable server, use browser localStorage only |
 | `AUTOMD_STORAGE_DIR` | `~/.automd` | Data storage directory |

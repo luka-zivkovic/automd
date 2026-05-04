@@ -10,6 +10,10 @@ export type {
   BoardFile,
   ItemType,
   Project,
+  Agent,
+  AgentRuntime,
+  AgentStatus,
+  Comment,
 } from './types.js'
 
 // Parser & Serializer
