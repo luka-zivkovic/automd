@@ -13,6 +13,62 @@ import { queueEmbeddingUpdate } from '../embeddings/index.js'
 
 export const agentsRouter = Router()
 
+const RUNTIMES = new Set(['claude-code', 'codex', 'cursor', 'unknown'])
+const STATUSES = new Set(['active', 'paused', 'archived'])
+const ENV_DENY_RE = /^(AUTOMD_|.*(?:API_KEY|SECRET|TOKEN).*)/i
+
+function cleanText(value: unknown, maxLen: number): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed.slice(0, maxLen) : undefined
+}
+
+function cleanStringArray(value: unknown, maxItems = 50, maxLen = 100): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value
+    .filter((v): v is string => typeof v === 'string')
+    .map((v) => v.trim().slice(0, maxLen))
+    .filter(Boolean)
+    .slice(0, maxItems)
+}
+
+function cleanEnv(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const env: Record<string, string> = {}
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim()
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue
+    if (key.length > 64 || ENV_DENY_RE.test(key)) continue
+    if (typeof rawValue !== 'string') continue
+    env[key] = rawValue.slice(0, 2000)
+    if (Object.keys(env).length >= 50) break
+  }
+  return env
+}
+
+function cleanAgentPayload(body: any): Partial<Agent> & { name?: string } {
+  const input = body && typeof body === 'object' ? body : {}
+  const payload: Partial<Agent> & { name?: string } = {}
+  const name = cleanText(input.name, 200)
+  if (name) payload.name = name
+  const slug = cleanText(input.slug, 100)
+  if (slug) payload.slug = slug
+  const avatar = cleanText(input.avatar, 200)
+  if (avatar) payload.avatar = avatar
+  if (typeof input.runtime === 'string' && RUNTIMES.has(input.runtime)) payload.runtime = input.runtime
+  const model = cleanText(input.model, 100)
+  if (model) payload.model = model
+  if (typeof input.status === 'string' && STATUSES.has(input.status)) payload.status = input.status
+  const mcpServers = cleanStringArray(input.mcpServers, 50, 100)
+  if (mcpServers) payload.mcpServers = mcpServers
+  const env = cleanEnv(input.env)
+  if (env) payload.env = env
+  const capabilities = cleanStringArray(input.capabilities, 100, 100)
+  if (capabilities) payload.capabilities = capabilities
+  if (typeof input.body === 'string') payload.body = input.body.slice(0, 100000)
+  return payload
+}
+
 function flatten(tasks: Task[]): Task[] {
   const out: Task[] = []
   for (const task of tasks) {
@@ -39,13 +95,13 @@ agentsRouter.get('/', (_req, res) => {
 })
 
 agentsRouter.post('/', (req, res) => {
-  const { name, slug, avatar, runtime, model, status, mcpServers, env, capabilities, body } = req.body
-  if (!name || typeof name !== 'string') {
+  const payload = cleanAgentPayload(req.body)
+  if (!payload.name) {
     res.status(400).json({ error: 'name is required' })
     return
   }
   try {
-    const agent = createAgent({ name, slug, avatar, runtime, model, status, mcpServers, env, capabilities, body })
+    const agent = createAgent(payload as Partial<Agent> & { name: string })
     broadcast({ type: 'agent:created', payload: { agent } })
     res.status(201).json(agent)
   } catch (err) {
@@ -93,7 +149,7 @@ agentsRouter.get('/:id', (req, res) => {
 })
 
 agentsRouter.patch('/:id', (req, res) => {
-  const agent = updateAgent(req.params.id, req.body)
+  const agent = updateAgent(req.params.id, cleanAgentPayload(req.body))
   if (!agent) {
     res.status(404).json({ error: 'Agent not found' })
     return

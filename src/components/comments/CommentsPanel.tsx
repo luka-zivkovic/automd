@@ -33,12 +33,18 @@ export function CommentsPanel({ taskId }: { taskId: string }) {
 
   if (!HAS_SERVER) return <p className="text-xs text-muted-foreground">Comments require server mode.</p>
 
+  function formatCreatedAt(value: string) {
+    if (!value) return 'manual'
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? 'manual' : date.toLocaleString()
+  }
+
   return (
     <div className="space-y-3">
       <div className="space-y-2">
         {comments.map((comment) => (
           <div key={comment.id} className="rounded-md border bg-muted/20 px-3 py-2">
-            <div className="text-[11px] text-muted-foreground mb-1">@{comment.author} · {new Date(comment.createdAt).toLocaleString()}</div>
+            <div className="text-[11px] text-muted-foreground mb-1">@{comment.author} · {formatCreatedAt(comment.createdAt)}</div>
             <p className="text-sm whitespace-pre-wrap">{comment.body}</p>
           </div>
         ))}

@@ -293,7 +293,20 @@ export function registerTools(server: McpServer) {
     try {
       const who = process.env.AUTOMD_AGENT_ID ?? 'agent'
       const comment = await api.addComment(itemId, taskId, who, `Help needed: ${question}`)
-      return json({ ok: true, comment })
+      const item = await api.getFile(itemId)
+      const task = item.columns
+        .flatMap((c: ApiColumn) => flattenApiTasks(c.tasks))
+        .find((t: ApiTask) => t.id === taskId)
+      let labelUpdated = false
+      if (task && !task.metadata.labels.some((l) => l.toLowerCase() === 'help-wanted')) {
+        await api.updateTask(itemId, taskId, {
+          action: 'updateMetadata',
+          displayContent: task.displayContent,
+          metadata: { ...task.metadata, labels: [...task.metadata.labels, 'help-wanted'] },
+        })
+        labelUpdated = true
+      }
+      return json({ ok: true, comment, labelUpdated })
     } catch (err) {
       return errorResponse(err)
     }
