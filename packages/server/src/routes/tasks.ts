@@ -51,7 +51,12 @@ function isValidIsoDate(value: string): boolean {
 }
 
 function isDoneColumnTitle(value: string | undefined): boolean {
-  return /^(done|completed)$/i.test((value ?? '').trim())
+  return /^(done|completed|shipped|released|closed|live)$/i.test((value ?? '').trim())
+}
+
+function isDoneColumn(columns: { id: string; title: string }[], column: { id: string; title: string } | undefined): boolean {
+  if (!column) return false
+  return isDoneColumnTitle(column.title) || columns[columns.length - 1]?.id === column.id
 }
 
 export const tasksRouter = Router({ mergeParams: true })
@@ -228,7 +233,13 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
           webhookEvent = 'task.moved'
           {
             const targetCol = columns.find((c) => c.id === targetColumnId)
-            reopened = isDoneColumnTitle(taskColumn?.title) && !isDoneColumnTitle(targetCol?.title)
+            reopened = isDoneColumn(columns, taskColumn) && !isDoneColumn(columns, targetCol)
+            if (reopened && taskBefore?.metadata.completedAt) {
+              newAst = updateTaskMetadata(newAst, taskId, taskBefore.displayContent, {
+                ...taskBefore.metadata,
+                completedAt: null,
+              })
+            }
           }
           break
         case 'updateContent':

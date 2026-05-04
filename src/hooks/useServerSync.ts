@@ -10,6 +10,28 @@ import type { BoardFile, Project } from '@/lib/markdown/types'
 import { toast } from 'sonner'
 import { apiFetch, WS_BASE, HAS_SERVER } from '@/lib/api'
 
+function normalizeIdentity(value: string | null | undefined): string | null {
+  const normalized = (value ?? '')
+    .split('@')[0]
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+  return normalized || null
+}
+
+function currentMentionTargets(): Set<string> {
+  return new Set(
+    [useUserStore.getState().username, useAuthStore.getState().email]
+      .map(normalizeIdentity)
+      .filter((value): value is string => !!value)
+  )
+}
+
+function notifyInboxRefresh() {
+  window.dispatchEvent(new Event('automd:inbox-refresh'))
+}
+
 /**
  * Syncs the web app with automd-server.
  * Disabled when VITE_LOCAL_ONLY=true (local-only mode with localStorage).
@@ -178,6 +200,7 @@ export function useServerSync() {
                 fileId: id,
                 fileName: file?.name,
               })
+              notifyInboxRefresh()
               break
             }
             case 'file:created': {
@@ -283,11 +306,17 @@ export function useServerSync() {
                 fileId,
                 fileName: file?.name,
               })
-              if (comment?.mentions?.length) {
+              const currentTargets = currentMentionTargets()
+              const isMentioned = comment?.mentions?.some((mention: string) => {
+                const normalized = normalizeIdentity(mention)
+                return normalized ? currentTargets.has(normalized) : false
+              })
+              if (isMentioned) {
                 toast.message('New mention', {
                   description: comment.body,
                 })
               }
+              notifyInboxRefresh()
               break
             }
             case 'task:reopened': {
@@ -300,6 +329,11 @@ export function useServerSync() {
                 fileId: itemId,
                 fileName: itemName,
               })
+              notifyInboxRefresh()
+              break
+            }
+            case 'task:claim_released': {
+              notifyInboxRefresh()
               break
             }
             case 'agent:created':

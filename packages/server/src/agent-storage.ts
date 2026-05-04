@@ -7,6 +7,7 @@ import * as storage from './storage.js'
 import { invalidateBoardCache, parseBoard } from './board-cache.js'
 import { serializeAst, updateTaskMetadata } from '@automd/shared'
 import { broadcast } from './ws.js'
+import { appendActivity } from './activity-storage.js'
 
 function agentsDir() { return path.join(getAutomdDir(), 'agents') }
 function agentPath(slug: string) { return path.join(agentsDir(), slug, 'AGENT.md') }
@@ -124,7 +125,7 @@ export function releaseStaleClaims(maxAgeMs = 6 * 60 * 60 * 1000): number {
     const { ast, tasks } = parseBoard(file.markdown, file.id)
     let currentAst = ast
     let changed = false
-    const releasedTasks: Array<{ taskId: string; slug: string | null }> = []
+    const releasedTasks: Array<{ taskId: string; taskTitle: string; slug: string | null }> = []
     const stack = [...tasks]
     while (stack.length) {
       const task = stack.pop()!
@@ -138,7 +139,7 @@ export function releaseStaleClaims(maxAgeMs = 6 * 60 * 60 * 1000): number {
         claimedAt: null,
       })
       changed = true
-      releasedTasks.push({ taskId: task.id, slug: task.metadata.builtBy })
+      releasedTasks.push({ taskId: task.id, taskTitle: task.displayContent, slug: task.metadata.builtBy })
       released++
     }
     if (changed) {
@@ -147,6 +148,14 @@ export function releaseStaleClaims(maxAgeMs = 6 * 60 * 60 * 1000): number {
       if (saved) {
         broadcast({ type: 'file:updated', payload: { id: saved.id, markdown: saved.markdown } })
         for (const task of releasedTasks) {
+          appendActivity({
+            type: 'task.claim_released',
+            itemId: saved.id,
+            itemName: saved.name,
+            taskId: task.taskId,
+            taskTitle: task.taskTitle,
+            agentSlug: task.slug,
+          })
           broadcast({ type: 'task:claim_released', payload: { itemId: saved.id, taskId: task.taskId, slug: task.slug, reason: 'stale' } })
         }
       }

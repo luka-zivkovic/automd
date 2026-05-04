@@ -4,7 +4,7 @@ import * as storage from '../storage.js'
 import { parseBoard } from '../board-cache.js'
 import { listCommentsFromAst } from './comments.js'
 import { extractToken } from '../auth-middleware.js'
-import { getAgentIdFromCredential, getIdentityFromCredential } from '../auth-storage.js'
+import { getAgentIdFromCredential, getIdentityFromCredential, validateToken } from '../auth-storage.js'
 import { getAgent } from '../agent-storage.js'
 
 export const inboxRouter = Router()
@@ -29,18 +29,19 @@ function normalizeIdentity(value: string | null | undefined): string | null {
   return normalized || null
 }
 
-function identityFromRequest(req: { headers: { authorization?: string }, query: Record<string, unknown> }): string | null {
-  const queryTarget = typeof req.query.target === 'string' ? normalizeIdentity(req.query.target) : null
-  if (queryTarget) return queryTarget
-
+function viewerScope(req: { headers: { authorization?: string } }, queryTarget: string | null): { target: string | null; canReadAll: boolean } {
   const token = extractToken(req.headers.authorization)
-  if (!token) return null
+  if (!token) return { target: queryTarget, canReadAll: true }
+
   const agentId = getAgentIdFromCredential(token)
   if (agentId) {
     const agent = getAgent(agentId)
-    if (agent) return normalizeIdentity(agent.slug)
+    if (agent) return { target: normalizeIdentity(agent.slug), canReadAll: false }
   }
-  return normalizeIdentity(getIdentityFromCredential(token))
+
+  if (validateToken(token)) return { target: queryTarget, canReadAll: true }
+
+  return { target: normalizeIdentity(getIdentityFromCredential(token)), canReadAll: false }
 }
 
 function includesIdentity(values: string[], target: string): boolean {
@@ -60,8 +61,10 @@ function itemTime(createdAt: string | undefined, fallback: number): number {
 
 inboxRouter.get('/', (req, res, next) => {
   try {
-    const showAll = req.query.all === 'true'
-    const target = showAll ? null : identityFromRequest(req)
+    const queryTarget = typeof req.query.target === 'string' ? normalizeIdentity(req.query.target) : null
+    const scope = viewerScope(req, queryTarget)
+    const showAll = req.query.all === 'true' && scope.canReadAll
+    const target = showAll ? null : scope.target
     const limit = Math.max(1, Math.min(Number(req.query.limit ?? 100) || 100, 250))
     const items: any[] = []
 

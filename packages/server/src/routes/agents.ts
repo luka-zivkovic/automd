@@ -115,13 +115,11 @@ function computeAgentMetrics(agent: Agent) {
       if (task.metadata.labels.some((label) => label.toLowerCase() === 'help-wanted')) helpWantedTasks++
       if (task.learnings?.trim()) learningsCount++
 
-      const end = parseDateTime(task.metadata.completedAt) ?? (task.checked === true ? file.updatedAt : null)
-      if (end) {
-        const start = parseDateTime(task.metadata.claimedAt) ?? file.createdAt
-        if (start && end >= start) {
-          cycleTotalMs += end - start
-          cycleCount++
-        }
+      const start = parseDateTime(task.metadata.claimedAt)
+      const end = parseDateTime(task.metadata.completedAt)
+      if (start && end && end >= start) {
+        cycleTotalMs += end - start
+        cycleCount++
       }
     }
   }

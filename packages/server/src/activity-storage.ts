@@ -3,7 +3,7 @@ import path from 'node:path'
 import { nanoid } from 'nanoid'
 import { getAutomdDir } from './config.js'
 
-export type ActivityRecordType = 'task.reopened'
+export type ActivityRecordType = 'task.reopened' | 'task.claim_released'
 
 export interface ActivityRecord {
   id: string

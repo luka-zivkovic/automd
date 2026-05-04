@@ -44,12 +44,19 @@ export function InboxView() {
   const [target, setTarget] = useState<string>('all')
   const [items, setItems] = useState<InboxItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [refreshNonce, setRefreshNonce] = useState(0)
   const { agents, loadAgents } = useAgentsStore()
   const setActiveFile = useFilesStore((s) => s.setActiveFile)
   const setActiveView = useUiStore((s) => s.setActiveView)
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId)
 
   useEffect(() => { loadAgents() }, [loadAgents])
+
+  useEffect(() => {
+    const refresh = () => setRefreshNonce((value) => value + 1)
+    window.addEventListener('automd:inbox-refresh', refresh)
+    return () => window.removeEventListener('automd:inbox-refresh', refresh)
+  }, [])
 
   useEffect(() => {
     if (!HAS_SERVER) return
@@ -59,7 +66,7 @@ export function InboxView() {
       if (res.ok) setItems(res.data.items)
       setLoading(false)
     })
-  }, [target])
+  }, [target, refreshNonce])
 
   function openTask(item: InboxItem) {
     setActiveFile(item.itemId)
