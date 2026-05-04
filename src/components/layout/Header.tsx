@@ -6,7 +6,7 @@ import { useFileImport } from '@/hooks/useFileImport'
 import { useFileExport } from '@/hooks/useFileExport'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut, CheckSquare, Columns3 } from 'lucide-react'
+import { Upload, Download, Undo2, Redo2, PanelLeftOpen, PanelLeftClose, ChevronRight, Activity, LogOut, CheckSquare, Columns3, Bot } from 'lucide-react'
 import { useActivityStore } from '@/store/activity-store'
 import { useAuthStore } from '@/store/auth-store'
 import { UserBadge } from '@/components/settings/UserBadge'
@@ -165,6 +165,19 @@ export function Header() {
 
         <div className="flex items-center gap-1">
           <ConnectionStatus />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={activeView === 'agents' ? 'secondary' : 'ghost'}
+                size="icon-sm"
+                onClick={() => setActiveView('agents')}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <Bot className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Agents</TooltipContent>
+          </Tooltip>
           <UserBadge />
           <ThemeToggle />
           {isAuthed && <ApiKeyManager />}

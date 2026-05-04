@@ -18,6 +18,10 @@ export function serializeMetadata(
     tokens.push(`priority:${metadata.priority}`)
   }
 
+  if (metadata.status) {
+    tokens.push(`status:${metadata.status}`)
+  }
+
   if (metadata.dueDate) {
     tokens.push(`due:${metadata.dueDate}`)
   }
@@ -32,6 +36,10 @@ export function serializeMetadata(
 
   if (metadata.builtBy) {
     tokens.push(`built-by:${metadata.builtBy}`)
+  }
+
+  if (metadata.claimedAt) {
+    tokens.push(`claimed-at:${metadata.claimedAt}`)
   }
 
   if (metadata.completedAt) {

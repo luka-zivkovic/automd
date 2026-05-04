@@ -26,7 +26,9 @@ interface SearchHit {
   title: string
   labels: string[]
   description: string | null
+  acceptanceCriteria: string | null
   learnings: string | null
+  checked: boolean | null
   column: string
   score: number
   matchType: 'text' | 'semantic' | 'both'
@@ -37,16 +39,19 @@ interface SearchHit {
 searchRouter.get('/', async (req, res, next) => {
   try {
     const q = (req.query.q as string || '').trim()
-    if (!q) {
-      res.status(400).json({ error: 'q parameter is required' })
-      return
-    }
-
     const rawLimit = parseInt(req.query.limit as string ?? '', 10)
     const limit = Math.min(Number.isNaN(rawLimit) ? 20 : Math.max(1, rawLimit), 100)
     const label = (req.query.label as string || '').trim() || null
+    const assignee = (req.query.assignee as string || '').trim() || null
+    const checked = req.query.checked === 'true' ? true : req.query.checked === 'false' ? false : null
     const knowledgeOnly = req.query.knowledgeOnly === 'true'
+    const hasContext = req.query.hasContext === 'true'
     const compact = req.query.compact === 'true'
+    if (!q && !label && !assignee && checked === null && !knowledgeOnly && !hasContext) {
+      res.status(400).json({ error: 'Provide q or at least one filter parameter' })
+      return
+    }
+
     const embeddingsAvailable = isEmbeddingsEnabled()
     const requestedMode = (req.query.mode as string) || (embeddingsAvailable ? 'hybrid' : 'text')
     const mode = (requestedMode === 'semantic' || requestedMode === 'hybrid') && !embeddingsAvailable
@@ -54,11 +59,13 @@ searchRouter.get('/', async (req, res, next) => {
       : requestedMode
 
     // 1. Text search
-    const textResults = mode !== 'semantic' ? textSearch(q, label, knowledgeOnly) : []
+    const textResults = mode !== 'semantic' || !q
+      ? textSearch(q, { label, assignee, checked, knowledgeOnly, hasContext })
+      : []
 
     // 2. Semantic search
-    const semanticResults = (mode === 'semantic' || mode === 'hybrid') && embeddingsAvailable
-      ? await semanticSearchResults(q, limit * 2, label, knowledgeOnly)
+    const semanticResults = q && (mode === 'semantic' || mode === 'hybrid') && embeddingsAvailable
+      ? await semanticSearchResults(q, limit * 2, { label, assignee, checked, knowledgeOnly, hasContext })
       : []
 
     // 3. Merge + recency boost
@@ -188,9 +195,27 @@ function bm25Score(
   return totalScore
 }
 
-function textSearch(query: string, labelFilter: string | null, knowledgeOnly: boolean): SearchHit[] {
+interface SearchFilters {
+  label: string | null
+  assignee: string | null
+  checked: boolean | null
+  knowledgeOnly: boolean
+  hasContext: boolean
+}
+
+function taskMatchesFilters(task: Task, allLabels: string[], tier: ContentTier, filters: SearchFilters): boolean {
+  if (filters.knowledgeOnly && tier !== 'knowledge') return false
+  if (filters.label && !allLabels.some((l) => l.toLowerCase() === filters.label!.toLowerCase())) return false
+  if (filters.assignee && !task.metadata.assignees.some((a) => a.toLowerCase() === filters.assignee!.toLowerCase())) return false
+  if (filters.checked !== null && task.checked !== filters.checked) return false
+  if (filters.hasContext && !task.description && !task.acceptanceCriteria && !task.learnings) return false
+  return true
+}
+
+function textSearch(query: string, filters: SearchFilters): SearchHit[] {
   const queryTerms = tokenizeForSearch(query)
-  if (queryTerms.length === 0) return []
+  const hasQuery = query.trim().length > 0
+  if (hasQuery && queryTerms.length === 0) return []
 
   const files = storage.listFiles()
 
@@ -213,14 +238,11 @@ function textSearch(query: string, labelFilter: string | null, knowledgeOnly: bo
       // Tier-based filtering: classify content, skip if not embeddable
       const tier = classifyTask(task, file.itemType)
       if (!tier) continue
-      if (knowledgeOnly && tier !== 'knowledge') continue
 
       const allLabels = [...task.metadata.labels, ...frontmatterTags]
-      if (labelFilter && !allLabels.some((l) => l.toLowerCase() === labelFilter.toLowerCase())) {
-        continue
-      }
+      if (!taskMatchesFilters(task, allLabels, tier, filters)) continue
 
-      const col = columns.find((c) => c.tasks.some((t) => t.id === task.id))
+      const col = columns.find((c) => flattenTasks(c.tasks).some((t) => t.id === task.id))
       const fields: Record<string, string[]> = {
         title: tokenizeForSearch(task.displayContent),
         learnings: tokenizeForSearch(task.learnings ?? ''),
@@ -247,8 +269,8 @@ function textSearch(query: string, labelFilter: string | null, knowledgeOnly: bo
   // Second pass: score each document
   const hits: SearchHit[] = []
   for (const doc of docs) {
-    const score = bm25Score(queryTerms, doc.fields, corpus)
-    if (score === 0) continue
+    const score = hasQuery ? bm25Score(queryTerms, doc.fields, corpus) : 1
+    if (hasQuery && score === 0) continue
 
     hits.push({
       itemId: doc.file.id,
@@ -257,7 +279,9 @@ function textSearch(query: string, labelFilter: string | null, knowledgeOnly: bo
       title: doc.task.displayContent,
       labels: doc.allLabels,
       description: doc.task.description,
+      acceptanceCriteria: doc.task.acceptanceCriteria,
       learnings: doc.task.learnings,
+      checked: doc.task.checked,
       column: doc.column,
       score,
       matchType: 'text',
@@ -275,8 +299,7 @@ function textSearch(query: string, labelFilter: string | null, knowledgeOnly: bo
 async function semanticSearchResults(
   query: string,
   limit: number,
-  labelFilter: string | null,
-  knowledgeOnly: boolean,
+  filters: SearchFilters,
 ): Promise<SearchHit[]> {
   const rawResults = await semanticSearch(query, limit)
   if (rawResults.length === 0) return []
@@ -293,14 +316,11 @@ async function semanticSearchResults(
     const { columns, tasks, meta } = parseBoard(file.markdown, file.id)
     const task = flattenTasks(tasks).find((t) => t.id === result.taskId)
     if (!task) continue
-    if (knowledgeOnly && result.tier !== 'knowledge') continue
 
     const allLabels = [...task.metadata.labels, ...(meta?.tags ?? [])]
-    if (labelFilter && !allLabels.some((l) => l.toLowerCase() === labelFilter.toLowerCase())) {
-      continue
-    }
+    if (!taskMatchesFilters(task, allLabels, result.tier, filters)) continue
 
-    const col = columns.find((c) => c.tasks.some((t) => t.id === task.id))
+    const col = columns.find((c) => flattenTasks(c.tasks).some((t) => t.id === task.id))
 
     // Convert distance to 0-1 similarity (cosine distance → similarity)
     const similarity = Math.max(0, 1 - result.distance)
@@ -312,7 +332,9 @@ async function semanticSearchResults(
       title: task.displayContent,
       labels: allLabels,
       description: task.description,
+      acceptanceCriteria: task.acceptanceCriteria,
       learnings: task.learnings,
+      checked: task.checked,
       column: col?.title ?? task.column,
       score: similarity,
       matchType: 'semantic',
@@ -444,7 +466,9 @@ interface CompactHit {
   title: string
   labels: string[]
   description: string | null
+  acceptanceCriteria: string | null
   learnings: string | null
+  checked: boolean | null
   column: string
   score: number
   matchType: string
@@ -459,7 +483,9 @@ function compactResults(hits: SearchHit[]): CompactHit[] {
     title: hit.title,
     labels: hit.labels,
     description: truncate(hit.description, COMPACT_MAX_CHARS),
+    acceptanceCriteria: truncate(hit.acceptanceCriteria, COMPACT_MAX_CHARS),
     learnings: truncate(hit.learnings, COMPACT_MAX_CHARS),
+    checked: hit.checked,
     column: hit.column,
     score: Math.round(hit.score * 1000) / 1000,
     matchType: hit.matchType,

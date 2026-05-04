@@ -1,19 +1,61 @@
 import type { TaskMetadata } from './types.js'
 
-const ASSIGNEE_RE = /(?:^|\s)@(\w[\w-]*)/g
-const LABEL_RE = /(?:^|\s)#(\w[\w-]*)/g
-const DUE_DATE_RE = /due:(\d{4}-\d{2}-\d{2})/i
-const ESTIMATE_RE = /est:([\d.]+)h?/i
-const PRIORITY_RE = /priority:(high|medium|low)/i
-const CREATED_BY_RE = /created-by:([\w-]+)/i
-const BUILT_BY_RE = /built-by:([\w-]+)/i
-const ARCHIVED_RE = /archived:true/i
-const COMPLETED_AT_RE = /completed-at:(\d{4}-\d{2}-\d{2})/i
-const KNOWLEDGE_RE = /knowledge:true/i
+const TOKEN_START = String.raw`(?<![\p{L}\p{N}_-])`
+const TOKEN_END = String.raw`(?![\p{L}\p{N}_-])`
+const HANDLE = String.raw`[A-Za-z][A-Za-z0-9_-]*`
+const LABEL = String.raw`[A-Za-z_][A-Za-z0-9_-]*`
+const DATE = String.raw`\d{4}-\d{2}-\d{2}`
 
-// All token patterns for stripping — order matters (longer patterns first)
-const ALL_TOKENS_RE =
-  /\s*(?:knowledge:true|completed-at:\d{4}-\d{2}-\d{2}|archived:true|created-by:[\w-]+|built-by:[\w-]+|priority:(?:high|medium|low)|est:[\d.]+h?|due:\d{4}-\d{2}-\d{2}|@\w[\w-]*|#\w[\w-]*)\s*/gi
+const ASSIGNEE_RE = new RegExp(`${TOKEN_START}@(${HANDLE})${TOKEN_END}`, 'gu')
+const LABEL_RE = new RegExp(`${TOKEN_START}#(?![0-9]+${TOKEN_END})(?![A-Fa-f0-9]{3}(?:[A-Fa-f0-9]{3})?${TOKEN_END})(${LABEL})${TOKEN_END}`, 'gu')
+const DUE_DATE_RE = new RegExp(`${TOKEN_START}due:(${DATE})${TOKEN_END}`, 'giu')
+const ESTIMATE_RE = new RegExp(`${TOKEN_START}est:(\\d+(?:\\.\\d+)?)(?:h)?(?![\\p{L}\\p{N}_.-])`, 'giu')
+const PRIORITY_RE = new RegExp(`${TOKEN_START}priority:(high|medium|low)${TOKEN_END}`, 'giu')
+const STATUS_RE = new RegExp(`${TOKEN_START}status:(todo|in_progress|blocked|in_review|done)${TOKEN_END}`, 'giu')
+const CREATED_BY_RE = new RegExp(`${TOKEN_START}created-by:(${HANDLE})${TOKEN_END}`, 'giu')
+const BUILT_BY_RE = new RegExp(`${TOKEN_START}built-by:(${HANDLE})${TOKEN_END}`, 'giu')
+const CLAIMED_AT_RE = new RegExp(`${TOKEN_START}claimed-at:([0-9]{4}-[0-9]{2}-[0-9]{2}T[^\\s]+)${TOKEN_END}`, 'giu')
+const ARCHIVED_RE = new RegExp(`${TOKEN_START}archived:true${TOKEN_END}`, 'giu')
+const COMPLETED_AT_RE = new RegExp(`${TOKEN_START}completed-at:(${DATE})${TOKEN_END}`, 'giu')
+const KNOWLEDGE_RE = new RegExp(`${TOKEN_START}knowledge:true${TOKEN_END}`, 'giu')
+
+interface TokenSpan { start: number; end: number }
+
+function validIsoDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+}
+
+function reset(re: RegExp): RegExp {
+  re.lastIndex = 0
+  return re
+}
+
+function addSpan(spans: TokenSpan[], match: RegExpExecArray) {
+  spans.push({ start: match.index, end: match.index + match[0].length })
+}
+
+function stripSpans(content: string, spans: TokenSpan[]): string {
+  if (spans.length === 0) return content.trim()
+  const sorted = [...spans].sort((a, b) => a.start - b.start)
+  let result = ''
+  let cursor = 0
+  for (const span of sorted) {
+    if (span.start < cursor) continue
+    result += content.slice(cursor, span.start)
+    result += ' '
+    cursor = span.end
+  }
+  result += content.slice(cursor)
+  return result.replace(/\s{2,}/g, ' ').trim()
+}
 
 export function emptyMetadata(): TaskMetadata {
   return {
@@ -24,6 +66,9 @@ export function emptyMetadata(): TaskMetadata {
     priority: null,
     createdBy: null,
     builtBy: null,
+    agentId: null,
+    claimedAt: null,
+    status: null,
     archived: false,
     completedAt: null,
     knowledge: false,
@@ -35,62 +80,89 @@ export function parseMetadata(content: string): {
   displayContent: string
 } {
   const metadata = emptyMetadata()
+  const spans: TokenSpan[] = []
 
-  // Extract assignees
-  for (const match of content.matchAll(ASSIGNEE_RE)) {
+  for (const match of content.matchAll(reset(ASSIGNEE_RE))) {
     metadata.assignees.push(match[1])
+    addSpan(spans, match)
   }
   metadata.assignees = [...new Set(metadata.assignees)]
 
-  // Extract labels
-  for (const match of content.matchAll(LABEL_RE)) {
+  for (const match of content.matchAll(reset(LABEL_RE))) {
     metadata.labels.push(match[1])
+    addSpan(spans, match)
   }
   metadata.labels = [...new Set(metadata.labels)]
 
-  // Extract due date
-  const dueMatch = content.match(DUE_DATE_RE)
-  if (dueMatch) {
-    const d = new Date(dueMatch[1])
-    if (!isNaN(d.getTime())) metadata.dueDate = dueMatch[1]
+  for (const match of content.matchAll(reset(DUE_DATE_RE))) {
+    if (validIsoDate(match[1])) {
+      metadata.dueDate = match[1]
+      addSpan(spans, match)
+    }
+    break
   }
 
-  // Extract estimate
-  const estMatch = content.match(ESTIMATE_RE)
-  if (estMatch) {
-    const val = parseFloat(estMatch[1])
-    if (isFinite(val) && val > 0 && val <= 9999) metadata.estimate = val
+  for (const match of content.matchAll(reset(ESTIMATE_RE))) {
+    const val = Number(match[1])
+    if (Number.isFinite(val) && val > 0 && val <= 9999) {
+      metadata.estimate = val
+      addSpan(spans, match)
+    }
+    break
   }
 
-  // Extract priority
-  const prioMatch = content.match(PRIORITY_RE)
-  if (prioMatch) metadata.priority = prioMatch[1].toLowerCase() as TaskMetadata['priority']
-
-  // Extract signatures
-  const createdMatch = content.match(CREATED_BY_RE)
-  if (createdMatch) metadata.createdBy = createdMatch[1]
-
-  const builtMatch = content.match(BUILT_BY_RE)
-  if (builtMatch) metadata.builtBy = builtMatch[1]
-
-  // Extract archived flag
-  if (content.match(ARCHIVED_RE)) metadata.archived = true
-
-  // Extract completed-at date
-  const completedMatch = content.match(COMPLETED_AT_RE)
-  if (completedMatch) {
-    const d = new Date(completedMatch[1])
-    if (!isNaN(d.getTime())) metadata.completedAt = completedMatch[1]
+  for (const match of content.matchAll(reset(PRIORITY_RE))) {
+    metadata.priority = match[1].toLowerCase() as TaskMetadata['priority']
+    addSpan(spans, match)
+    break
   }
 
-  // Extract knowledge flag
-  if (content.match(KNOWLEDGE_RE)) metadata.knowledge = true
+  for (const match of content.matchAll(reset(STATUS_RE))) {
+    metadata.status = match[1].toLowerCase() as TaskMetadata['status']
+    addSpan(spans, match)
+    break
+  }
 
-  // Strip all tokens to get display content
-  const displayContent = content
-    .replace(ALL_TOKENS_RE, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
+  for (const match of content.matchAll(reset(CREATED_BY_RE))) {
+    metadata.createdBy = match[1]
+    addSpan(spans, match)
+    break
+  }
 
-  return { metadata, displayContent }
+  for (const match of content.matchAll(reset(BUILT_BY_RE))) {
+    metadata.builtBy = match[1]
+    addSpan(spans, match)
+    break
+  }
+
+  for (const match of content.matchAll(reset(CLAIMED_AT_RE))) {
+    const date = new Date(match[1])
+    if (!Number.isNaN(date.getTime())) {
+      metadata.claimedAt = match[1]
+      addSpan(spans, match)
+    }
+    break
+  }
+
+  for (const match of content.matchAll(reset(ARCHIVED_RE))) {
+    metadata.archived = true
+    addSpan(spans, match)
+    break
+  }
+
+  for (const match of content.matchAll(reset(COMPLETED_AT_RE))) {
+    if (validIsoDate(match[1])) {
+      metadata.completedAt = match[1]
+      addSpan(spans, match)
+    }
+    break
+  }
+
+  for (const match of content.matchAll(reset(KNOWLEDGE_RE))) {
+    metadata.knowledge = true
+    addSpan(spans, match)
+    break
+  }
+
+  return { metadata, displayContent: stripSpans(content, spans) }
 }

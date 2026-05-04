@@ -37,6 +37,18 @@ function flattenTasks(tasks: { id: string; children: any[] }[]): { id: string; c
   return result
 }
 
+function isValidIsoDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+}
+
 export const tasksRouter = Router({ mergeParams: true })
 
 function saveFile(fileId: string, markdown: string) {
@@ -237,11 +249,11 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
             return { status: 400 as const, error: 'labels must be an array' }
           }
           if (metadata.dueDate !== undefined && metadata.dueDate !== null &&
-              (typeof metadata.dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(metadata.dueDate))) {
-            return { status: 400 as const, error: 'dueDate must be YYYY-MM-DD format' }
+              (typeof metadata.dueDate !== 'string' || !isValidIsoDate(metadata.dueDate))) {
+            return { status: 400 as const, error: 'dueDate must be a valid YYYY-MM-DD date' }
           }
           if (metadata.estimate !== undefined && metadata.estimate !== null &&
-              (typeof metadata.estimate !== 'number' || metadata.estimate < 0 || metadata.estimate > 9999)) {
+              (typeof metadata.estimate !== 'number' || metadata.estimate <= 0 || metadata.estimate > 9999)) {
             return { status: 400 as const, error: 'estimate must be a number between 0 and 9999' }
           }
           newAst = updateTaskMetadata(ast, taskId, displayContent, metadata as TaskMetadata)

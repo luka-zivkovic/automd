@@ -109,6 +109,14 @@ describe('heading-tasks mode: extractTasksAndColumns', () => {
     expect(tasks[0].description).toContain('This is a description')
   })
 
+  it('should preserve inline markdown in descriptions', () => {
+    const md =
+      '# Todo\n\n## My task\n\nUse **bold**, `code`, and [docs](https://example.com).\n'
+    const { tasks } = extract(md)
+
+    expect(tasks[0].description).toBe('Use **bold**, `code`, and [docs](https://example.com).')
+  })
+
   it('should extract description and subtasks together', () => {
     const md = [
       '# Todo',

@@ -8,9 +8,40 @@ export interface TaskMetadata {
   priority: 'high' | 'medium' | 'low' | null
   createdBy: string | null
   builtBy: string | null
+  agentId?: string | null
+  claimedAt?: string | null
+  status?: 'todo' | 'in_progress' | 'blocked' | 'in_review' | 'done' | null
   archived: boolean
   completedAt: string | null
   knowledge: boolean
+}
+
+export type AgentRuntime = 'claude-code' | 'codex' | 'cursor' | 'unknown'
+export type AgentStatus = 'active' | 'paused' | 'archived'
+
+export interface Agent {
+  id: string
+  name: string
+  slug: string
+  avatar: string | null
+  runtime: AgentRuntime
+  model: string | null
+  status: AgentStatus
+  mcpServers: string[]
+  env: Record<string, string>
+  capabilities: string[]
+  createdAt: number
+  updatedAt: number
+  body?: string
+}
+
+export interface Comment {
+  id: string
+  taskId: string
+  author: string
+  createdAt: string
+  body: string
+  mentions: string[]
 }
 
 export interface Task {

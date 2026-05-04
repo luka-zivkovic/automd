@@ -155,6 +155,31 @@ describe('parseMetadata', () => {
     expect(metadata.labels).toEqual(['my_label'])
   })
 
+  it('should not parse email domains as assignees', () => {
+    const { metadata, displayContent } = parseMetadata('Email support@example.com about auth')
+    expect(metadata.assignees).toEqual([])
+    expect(displayContent).toBe('Email support@example.com about auth')
+  })
+
+  it('should not parse hex colors or issue refs as labels', () => {
+    const { metadata, displayContent } = parseMetadata('Use #FF0000 for bug #123 but keep #frontend')
+    expect(metadata.labels).toEqual(['frontend'])
+    expect(displayContent).toBe('Use #FF0000 for bug #123 but keep')
+  })
+
+  it('should reject invalid calendar dates without stripping them', () => {
+    const { metadata, displayContent } = parseMetadata('Task due:2024-99-99 completed-at:2024-02-31')
+    expect(metadata.dueDate).toBeNull()
+    expect(metadata.completedAt).toBeNull()
+    expect(displayContent).toBe('Task due:2024-99-99 completed-at:2024-02-31')
+  })
+
+  it('should reject malformed estimates without truncating', () => {
+    const { metadata, displayContent } = parseMetadata('Task est:1.2.3')
+    expect(metadata.estimate).toBeNull()
+    expect(displayContent).toBe('Task est:1.2.3')
+  })
+
   it('should strip all tokens cleanly from display content', () => {
     const { displayContent } = parseMetadata(
       'Task @user #label priority:high due:2025-01-01 est:5h created-by:x built-by:y completed-at:2025-01-02 knowledge:true archived:true'

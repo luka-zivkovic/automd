@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DescriptionEditor } from './DescriptionEditor'
 import { MetadataFieldEditor } from './MetadataFieldEditor'
 import { SubtaskList } from './SubtaskList'
+import { CommentsPanel } from '@/components/comments/CommentsPanel'
 import { X, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 
 export function TaskDetailPanel() {
@@ -166,6 +167,15 @@ export function TaskDetailPanel() {
                 Details
               </h4>
               <MetadataFieldEditor taskId={task.id} task={task} />
+            </div>
+
+            <Separator />
+
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+                Comments
+              </h4>
+              <CommentsPanel taskId={task.id} />
             </div>
 
             {/* Subtasks */}

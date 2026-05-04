@@ -11,6 +11,7 @@ import { initS3Sync, hydrateFromS3, isS3SyncEnabled } from './s3-sync.js'
 import { initEmbeddings, isEmbeddingsEnabled, shutdownEmbeddings } from './embeddings/index.js'
 import { closeRelationshipsDb } from './relationships.js'
 import { readSettings } from './settings-storage.js'
+import { ensureAgentStubsFromTasks, releaseStaleClaims } from './agent-storage.js'
 
 // Load root .env file (pnpm/tsx don't auto-load .env)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -28,14 +29,25 @@ if (fs.existsSync(envPath)) {
 }
 
 const PORT = parseInt(process.env.AUTOMD_PORT ?? '4800', 10)
+const HOST = process.env.AUTOMD_HOST
+
+function isLoopbackHost(host: string | undefined): boolean {
+  if (!host) return false
+  return host === '127.0.0.1' || host === '::1' || host === 'localhost'
+}
 
 async function main() {
+  if (isAuthDisabled() && HOST && !isLoopbackHost(HOST)) {
+    throw new Error('AUTOMD_DISABLE_AUTH=true cannot be used with a non-loopback AUTOMD_HOST')
+  }
+
   // S3: init client (sync) then hydrate (async, blocks startup)
   initS3Sync()
   await hydrateFromS3()
 
   // Embeddings: init from settings (sync, non-blocking)
   initEmbeddings(readSettings())
+  const migratedAgents = ensureAgentStubsFromTasks()
 
   const app = createApp()
 
@@ -43,9 +55,10 @@ async function main() {
   const server = createServer(app)
   setupWebSocket(server)
 
-  server.listen(PORT, () => {
+  const listenHost = HOST ?? (isAuthDisabled() ? '127.0.0.1' : undefined)
+  server.listen(PORT, listenHost, () => {
     const summary = getStorageSummary()
-    console.log(`[automd-server] Running on http://localhost:${PORT}`)
+    console.log(`[automd-server] Running on http://${listenHost ?? 'localhost'}:${PORT}`)
     console.log(`[automd-server] Storage: ${getStoragePath()} (${summary.items} items, ${summary.projects} projects)`)
     if (summary.items === 0) {
       console.warn('[automd-server] \u26a0 Storage is empty \u2014 if you expected data, check your volume mounts')
@@ -53,9 +66,12 @@ async function main() {
     console.log(`[automd-server] WebSocket: ws://localhost:${PORT}/ws`)
     console.log(`[automd-server] S3 sync: ${isS3SyncEnabled() ? 'enabled' : 'disabled'}`)
     console.log(`[automd-server] Embeddings: ${isEmbeddingsEnabled() ? 'enabled' : 'disabled'}`)
+    if (migratedAgents > 0) {
+      console.log(`[automd-server] Agents: created ${migratedAgents} archived stub agent(s) from built-by metadata`)
+    }
 
     if (isAuthDisabled()) {
-      console.log('[automd-server] Authentication: disabled (AUTOMD_DISABLE_AUTH=true)')
+      console.warn('[automd-server] ⚠ Authentication: disabled (AUTOMD_DISABLE_AUTH=true); loopback bind enforced unless AUTOMD_HOST is explicitly safe')
     } else if (isSetupComplete()) {
       console.log('[automd-server] Authentication: enabled')
     } else {
@@ -65,10 +81,17 @@ async function main() {
     startUpdateChecker()
   })
 
+  const staleClaimInterval = setInterval(() => {
+    const released = releaseStaleClaims()
+    if (released > 0) console.log(`[automd-server] Released ${released} stale agent claim(s)`)
+  }, 5 * 60 * 1000)
+  staleClaimInterval.unref()
+
   // Graceful shutdown: close DBs to avoid WAL corruption
   const shutdown = () => {
     console.log('[automd-server] Shutting down...')
     shutdownEmbeddings()
+    clearInterval(staleClaimInterval)
     closeRelationshipsDb()
     server.close(() => process.exit(0))
     // Force exit after 5s if close hangs
