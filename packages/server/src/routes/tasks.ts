@@ -22,6 +22,7 @@ import { parseBoard, invalidateBoardCache } from '../board-cache.js'
 import { dispatchWebhookEvent } from '../webhook-delivery.js'
 import type { WebhookEventType, TaskEventData } from '../webhook-events.js'
 import { queueEmbeddingUpdate } from '../embeddings/index.js'
+import { appendActivity } from '../activity-storage.js'
 
 type FileParams = { fileId: string }
 type TaskParams = { fileId: string; taskId: string }
@@ -47,6 +48,15 @@ function isValidIsoDate(value: string): boolean {
   return date.getUTCFullYear() === year &&
     date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day
+}
+
+function isDoneColumnTitle(value: string | undefined): boolean {
+  return /^(done|completed|shipped|released|closed|live)$/i.test((value ?? '').trim())
+}
+
+function isDoneColumn(columns: { id: string; title: string }[], column: { id: string; title: string } | undefined): boolean {
+  if (!column) return false
+  return isDoneColumnTitle(column.title) || columns[columns.length - 1]?.id === column.id
 }
 
 export const tasksRouter = Router({ mergeParams: true })
@@ -179,6 +189,7 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
       const taskColumn = columns.find((c) => flattenTasks(c.tasks).some((t) => t.id === taskId))
       let newAst = ast
       let webhookEvent: WebhookEventType | null = null
+      let reopened = false
 
       switch (action) {
         case 'toggle': {
@@ -209,6 +220,7 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
                 console.warn(`[tasks] Failed to clear completedAt for task ${taskId}:`, metaErr)
               }
               webhookEvent = 'task.uncompleted'
+              reopened = taskBefore?.checked === true
             }
           }
           break
@@ -219,6 +231,16 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
           }
           newAst = moveTask(ast, taskId, targetColumnId, targetIndex)
           webhookEvent = 'task.moved'
+          {
+            const targetCol = columns.find((c) => c.id === targetColumnId)
+            reopened = isDoneColumn(columns, taskColumn) && !isDoneColumn(columns, targetCol)
+            if (reopened && taskBefore?.metadata.completedAt) {
+              newAst = updateTaskMetadata(newAst, taskId, taskBefore.displayContent, {
+                ...taskBefore.metadata,
+                completedAt: null,
+              })
+            }
+          }
           break
         case 'updateContent':
           if (!content) {
@@ -304,6 +326,13 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         status: 200 as const,
         file: savedFile,
         webhookData: webhookEvent && whData ? { event: webhookEvent, data: whData } : undefined,
+        reopenData: reopened && taskBefore ? {
+          itemId: fileId,
+          itemName: file.name,
+          taskId,
+          taskTitle: taskBefore.displayContent,
+          agentSlug: taskBefore.metadata.builtBy,
+        } : undefined,
       }
     })
 
@@ -321,6 +350,10 @@ tasksRouter.patch('/:taskId', async (req: Request<TaskParams>, res, next) => {
         broadcast({ type: 'file:updated', payload: { id: result.file.id, markdown: result.file.markdown } })
         if (result.webhookData) {
           dispatchWebhookEvent(result.webhookData.event, result.webhookData.data)
+        }
+        if (result.reopenData) {
+          const activity = appendActivity({ type: 'task.reopened', ...result.reopenData })
+          broadcast({ type: 'task:reopened', payload: activity })
         }
         queueEmbeddingUpdate(result.file.id, result.file.markdown, result.file.itemType)
       }

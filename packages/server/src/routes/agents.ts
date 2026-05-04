@@ -10,6 +10,7 @@ import { parseBoard, invalidateBoardCache } from '../board-cache.js'
 import { withWriteLock } from '../write-lock.js'
 import { broadcast } from '../ws.js'
 import { queueEmbeddingUpdate } from '../embeddings/index.js'
+import { listActivity } from '../activity-storage.js'
 
 export const agentsRouter = Router()
 
@@ -85,6 +86,63 @@ function currentAgent(req: any): Agent | null {
   return agentId ? getAgent(agentId) : null
 }
 
+function parseDateTime(value: string | null | undefined): number | null {
+  if (!value) return null
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value
+  const time = new Date(normalized).getTime()
+  return Number.isNaN(time) ? null : time
+}
+
+function computeAgentMetrics(agent: Agent) {
+  let totalTasks = 0
+  let completedTasks = 0
+  let openTasks = 0
+  let blockedTasks = 0
+  let helpWantedTasks = 0
+  let learningsCount = 0
+  let cycleTotalMs = 0
+  let cycleCount = 0
+
+  for (const file of storage.listFiles()) {
+    const { tasks } = parseBoard(file.markdown, file.id)
+    for (const task of flatten(tasks)) {
+      if (task.metadata.builtBy !== agent.slug) continue
+      totalTasks++
+      const completed = task.checked === true || !!task.metadata.completedAt
+      if (completed) completedTasks++
+      else openTasks++
+      if (task.metadata.status === 'blocked') blockedTasks++
+      if (task.metadata.labels.some((label) => label.toLowerCase() === 'help-wanted')) helpWantedTasks++
+      if (task.learnings?.trim()) learningsCount++
+
+      const start = parseDateTime(task.metadata.claimedAt)
+      const end = parseDateTime(task.metadata.completedAt)
+      if (start && end && end >= start) {
+        cycleTotalMs += end - start
+        cycleCount++
+      }
+    }
+  }
+
+  const reopenCount = listActivity().filter((event) => event.type === 'task.reopened' && event.agentSlug === agent.slug).length
+
+  return {
+    agentId: agent.id,
+    slug: agent.slug,
+    totalTasks,
+    completedTasks,
+    openTasks,
+    blockedTasks,
+    helpWantedTasks,
+    learningsCount,
+    completionRate: totalTasks ? completedTasks / totalTasks : 0,
+    avgCycleTimeMs: cycleCount ? Math.round(cycleTotalMs / cycleCount) : null,
+    cycleSampleSize: cycleCount,
+    reopenCount,
+    reopenRate: completedTasks ? reopenCount / completedTasks : 0,
+  }
+}
+
 agentsRouter.post('/migrate', (_req, res) => {
   const created = ensureAgentStubsFromTasks()
   res.json({ ok: true, created })
@@ -137,6 +195,15 @@ agentsRouter.get('/me/tasks', (req, res) => {
     }
   }
   res.json({ agentId: agent.id, count: results.length, results })
+})
+
+agentsRouter.get('/:id/metrics', (req, res) => {
+  const agent = getAgent(req.params.id)
+  if (!agent) {
+    res.status(404).json({ error: 'Agent not found' })
+    return
+  }
+  res.json(computeAgentMetrics(agent))
 })
 
 agentsRouter.get('/:id', (req, res) => {

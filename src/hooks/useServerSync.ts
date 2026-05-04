@@ -5,9 +5,32 @@ import { useConnectionStore } from '@/store/connection-store'
 import { useUserStore } from '@/store/user-store'
 import { useAuthStore } from '@/store/auth-store'
 import { useActivityStore } from '@/store/activity-store'
+import { useAgentsStore } from '@/store/agents-store'
 import type { BoardFile, Project } from '@/lib/markdown/types'
 import { toast } from 'sonner'
 import { apiFetch, WS_BASE, HAS_SERVER } from '@/lib/api'
+
+function normalizeIdentity(value: string | null | undefined): string | null {
+  const normalized = (value ?? '')
+    .split('@')[0]
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+  return normalized || null
+}
+
+function currentMentionTargets(): Set<string> {
+  return new Set(
+    [useUserStore.getState().username, useAuthStore.getState().email]
+      .map(normalizeIdentity)
+      .filter((value): value is string => !!value)
+  )
+}
+
+function notifyInboxRefresh() {
+  window.dispatchEvent(new Event('automd:inbox-refresh'))
+}
 
 /**
  * Syncs the web app with automd-server.
@@ -177,6 +200,7 @@ export function useServerSync() {
                 fileId: id,
                 fileName: file?.name,
               })
+              notifyInboxRefresh()
               break
             }
             case 'file:created': {
@@ -269,6 +293,52 @@ export function useServerSync() {
               if (Array.isArray(agents)) {
                 useConnectionStore.getState().setAgents(agents)
               }
+              break
+            }
+            case 'comment:added': {
+              const { fileId, comment } = msg.payload
+              const file = useFilesStore.getState().files.find(f => f.id === fileId)
+              useActivityStore.getState().addEvent({
+                type: 'comment:added',
+                description: `New comment from @${comment?.author ?? 'someone'}`,
+                actor: comment?.author ?? 'Someone',
+                timestamp: Date.now(),
+                fileId,
+                fileName: file?.name,
+              })
+              const currentTargets = currentMentionTargets()
+              const isMentioned = comment?.mentions?.some((mention: string) => {
+                const normalized = normalizeIdentity(mention)
+                return normalized ? currentTargets.has(normalized) : false
+              })
+              if (isMentioned) {
+                toast.message('New mention', {
+                  description: comment.body,
+                })
+              }
+              notifyInboxRefresh()
+              break
+            }
+            case 'task:reopened': {
+              const { itemId, itemName, taskTitle, agentSlug } = msg.payload
+              useActivityStore.getState().addEvent({
+                type: 'task:reopened',
+                description: `Reopened "${taskTitle}"`,
+                actor: agentSlug ?? 'Someone',
+                timestamp: Date.now(),
+                fileId: itemId,
+                fileName: itemName,
+              })
+              notifyInboxRefresh()
+              break
+            }
+            case 'task:claim_released': {
+              notifyInboxRefresh()
+              break
+            }
+            case 'agent:created':
+            case 'agent:updated': {
+              useAgentsStore.getState().loadAgents()
               break
             }
           }
