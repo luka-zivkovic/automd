@@ -9,17 +9,13 @@ import { broadcast } from '../ws.js'
  * Create a WS client that collects all messages into an array.
  * Use `waitForNthMessage(n)` to wait for the Nth message (0-based).
  */
-function createCollectingWs(port: number, options: { since?: number; serverId?: string; includeSystem?: boolean } = {}): Promise<{
+function createCollectingWs(port: number, options: { since?: number; serverId?: string; token?: string; username?: string; includeSystem?: boolean } = {}): Promise<{
   ws: WebSocket
   messages: any[]
   waitForNthMessage: (n: number, timeoutMs?: number) => Promise<any>
 }> {
   return new Promise((resolve, reject) => {
-    const params = new URLSearchParams()
-    if (options.since !== undefined) params.set('since', String(options.since))
-    if (options.serverId) params.set('serverId', options.serverId)
-    const qs = params.toString() ? `?${params.toString()}` : ''
-    const ws = new WebSocket(`ws://localhost:${port}/ws${qs}`)
+    const ws = new WebSocket(`ws://localhost:${port}/ws`)
     const messages: any[] = []
     const waiters: Array<{ index: number; resolve: (msg: any) => void; reject: (err: Error) => void }> = []
 
@@ -47,7 +43,18 @@ function createCollectingWs(port: number, options: { since?: number; serverId?: 
       })
     }
 
-    ws.once('open', () => resolve({ ws, messages, waitForNthMessage }))
+    ws.once('open', () => {
+      ws.send(JSON.stringify({
+        type: 'ws:hello',
+        payload: {
+          token: options.token,
+          username: options.username,
+          since: options.since,
+          serverId: options.serverId,
+        },
+      }))
+      resolve({ ws, messages, waitForNthMessage })
+    })
     ws.once('error', reject)
   })
 }
@@ -98,6 +105,51 @@ describe('WebSocket broadcasts', () => {
     } finally {
       client.ws.close()
     }
+  })
+
+  it('should authenticate with a post-connect handshake', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    const setupRes = await request(server)
+      .post('/api/auth/setup')
+      .send({ email: 'admin@test.com', password: 'password123' })
+
+    const client = await createCollectingWs(port, { token: setupRes.body.token, includeSystem: true })
+    try {
+      const msg = await client.waitForNthMessage(0)
+      expect(msg.type).toBe('ws:welcome')
+      expect(client.ws.url).toBe(`ws://localhost:${port}/ws`)
+    } finally {
+      client.ws.close()
+    }
+  })
+
+  it('should reject an invalid post-connect handshake token', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    await request(server)
+      .post('/api/auth/setup')
+      .send({ email: 'admin@test.com', password: 'password123' })
+
+    const client = new WebSocket(`ws://localhost:${port}/ws`)
+    const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+      client.once('close', (code, reason) => resolve({ code, reason: reason.toString() }))
+    })
+    await new Promise<void>((resolve, reject) => {
+      client.once('open', () => resolve())
+      client.once('error', reject)
+    })
+    client.send(JSON.stringify({ type: 'ws:hello', payload: { token: 'invalid-token' } }))
+
+    const close = await closed
+    expect(close.code).toBe(1008)
+    expect(close.reason).toBe('Unauthorized')
   })
 
   it('should broadcast file:updated event on markdown change', async () => {

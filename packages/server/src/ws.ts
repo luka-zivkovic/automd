@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
-import { isAuthDisabled, isSetupComplete, validateCredential, getIdentityFromCredential } from './auth-storage.js'
+import { isAuthDisabled, isSetupComplete, isSetupLockedWithoutAuth, validateCredential, getIdentityFromCredential } from './auth-storage.js'
 
 export interface BroadcastEvent {
   type: string
@@ -16,8 +16,14 @@ interface ClientInfo {
   connectedAt: number
 }
 
+interface ClientAuth {
+  authenticated: boolean
+  identity: string
+}
+
 let wss: WebSocketServer | null = null
 const clients = new Map<WebSocket, ClientInfo>()
+const clientAuth = new Map<WebSocket, ClientAuth>()
 const REPLAY_LIMIT = 500
 let serverId = crypto.randomUUID()
 let nextSeq = 1
@@ -27,18 +33,23 @@ function shouldReplay(event: BroadcastEvent): boolean {
   return event.type !== 'presence:list'
 }
 
-function parseReplayRequest(req: any): { since: number | null; clientServerId: string | null } {
-  try {
-    const url = new URL(req.url || '', `http://${req.headers.host ?? 'localhost'}`)
-    const clientServerId = url.searchParams.get('serverId')
-    const raw = url.searchParams.get('since')
-    if (!raw) return { since: null, clientServerId }
-    const parsed = Number(raw)
-    const since = Number.isFinite(parsed) && parsed >= 0 ? parsed : null
-    return { since, clientServerId }
-  } catch {
-    return { since: null, clientServerId: null }
-  }
+function isAuthRequired(): boolean {
+  return !isAuthDisabled() && isSetupComplete()
+}
+
+function isAuthorized(ws: WebSocket): boolean {
+  return clientAuth.get(ws)?.authenticated === true
+}
+
+function parseReplayPayload(payload: unknown): { since: number | null; clientServerId: string | null } {
+  if (!payload || typeof payload !== 'object') return { since: null, clientServerId: null }
+  const data = payload as Record<string, unknown>
+  const parsed = data.since === undefined || data.since === null
+    ? Number.NaN
+    : typeof data.since === 'number' ? data.since : Number(data.since)
+  const since = Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+  const clientServerId = typeof data.serverId === 'string' ? data.serverId : null
+  return { since, clientServerId }
 }
 
 function sequenceEvent(event: BroadcastEvent): BroadcastEvent {
@@ -65,6 +76,28 @@ function replayMissedEvents(ws: WebSocket, since: number | null) {
   }
 }
 
+function sendWelcomeAndReplay(ws: WebSocket, replayRequest: { since: number | null; clientServerId: string | null }) {
+  if (ws.readyState !== WebSocket.OPEN) return
+  const since = replayRequest.clientServerId && replayRequest.clientServerId !== serverId ? 0 : replayRequest.since
+  ws.send(JSON.stringify({
+    type: 'ws:welcome',
+    payload: { serverId, currentSeq: nextSeq - 1, replayLimit: REPLAY_LIMIT },
+  }))
+  replayMissedEvents(ws, since)
+}
+
+function updatePresence(ws: WebSocket, identity: string, requestedUsername: unknown) {
+  if (!isAuthorized(ws)) return
+  const username = isAuthRequired()
+    ? identity
+    : (typeof requestedUsername === 'string' && requestedUsername.trim() ? requestedUsername : 'Anonymous')
+  clients.set(ws, {
+    username,
+    connectedAt: Date.now(),
+  })
+  broadcastPresence()
+}
+
 function broadcastPresence() {
   const agents = Array.from(clients.values())
   broadcast({ type: 'presence:list', payload: { agents } })
@@ -74,12 +107,20 @@ export function setupWebSocket(server: Server): WebSocketServer {
   serverId = crypto.randomUUID()
   replayLog = []
   nextSeq = 1
+  clients.clear()
+  clientAuth.clear()
   wss = new WebSocketServer({
     server,
     path: '/ws',
     verifyClient: (info, callback) => {
+      if (isSetupLockedWithoutAuth()) {
+        callback(false, 503, 'Authentication data missing')
+        return
+      }
+
       if (isAuthDisabled() || !isSetupComplete()) {
         ;(info.req as any)._automdIdentity = 'anonymous'
+        ;(info.req as any)._automdAuthenticated = true
         callback(true)
         return
       }
@@ -90,22 +131,13 @@ export function setupWebSocket(server: Server): WebSocketServer {
         const headerToken = authHeader.slice(7)
         if (validateCredential(headerToken)) {
           ;(info.req as any)._automdIdentity = getIdentityFromCredential(headerToken) ?? 'authenticated'
+          ;(info.req as any)._automdAuthenticated = true
           callback(true)
           return
         }
       }
 
-      // Fall back to query parameter (legacy, visible in server/proxy logs)
-      const url = new URL(info.req.url || '', `http://${info.req.headers.host ?? 'localhost'}`)
-      const token = url.searchParams.get('token')
-
-      if (token && validateCredential(token)) {
-        ;(info.req as any)._automdIdentity = getIdentityFromCredential(token) ?? 'authenticated'
-        callback(true)
-        return
-      }
-
-      callback(false, 401, 'Unauthorized')
+      callback(true)
     },
   })
 
@@ -130,15 +162,18 @@ export function setupWebSocket(server: Server): WebSocketServer {
 
   wss.on('connection', (ws, req) => {
     const serverIdentity = (req as any)._automdIdentity || 'anonymous'
-    const replayRequest = parseReplayRequest(req)
-    const since = replayRequest.clientServerId && replayRequest.clientServerId !== serverId ? 0 : replayRequest.since
+    const authenticated = (req as any)._automdAuthenticated === true
     console.log('[ws] Client connected')
     aliveClients.add(ws)
-    ws.send(JSON.stringify({
-      type: 'ws:welcome',
-      payload: { serverId, currentSeq: nextSeq - 1, replayLimit: REPLAY_LIMIT },
-    }))
-    replayMissedEvents(ws, since)
+    clientAuth.set(ws, { authenticated, identity: serverIdentity })
+    const authTimeout = !authenticated && isAuthRequired()
+      ? setTimeout(() => {
+        if (!isAuthorized(ws) && ws.readyState === WebSocket.OPEN) {
+          ws.close(1008, 'Unauthorized')
+        }
+      }, 5_000)
+      : null
+    authTimeout?.unref()
 
     ws.on('pong', () => {
       aliveClients.add(ws)
@@ -147,13 +182,38 @@ export function setupWebSocket(server: Server): WebSocketServer {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString())
+        if (msg.type === 'ws:hello') {
+          const payload = msg.payload ?? {}
+          const state = clientAuth.get(ws) ?? { authenticated: false, identity: 'anonymous' }
+          let identity = state.identity
+
+          if (!state.authenticated) {
+            const token = typeof payload.token === 'string' ? payload.token : ''
+            if (isAuthRequired()) {
+              if (!validateCredential(token)) {
+                ws.send(JSON.stringify({ type: 'ws:error', payload: { error: 'Authentication required.' } }))
+                ws.close(1008, 'Unauthorized')
+                return
+              }
+              identity = getIdentityFromCredential(token) ?? 'authenticated'
+            }
+            clientAuth.set(ws, { authenticated: true, identity })
+            if (authTimeout) clearTimeout(authTimeout)
+          }
+
+          sendWelcomeAndReplay(ws, parseReplayPayload(payload))
+          if (payload.username !== undefined) {
+            updatePresence(ws, identity, payload.username)
+          }
+          return
+        }
+
+        if (!isAuthorized(ws)) return
+
         if (msg.type === 'presence:join') {
           // Use server-verified identity when auth is enabled, not client-supplied username
-          clients.set(ws, {
-            username: serverIdentity !== 'anonymous' ? serverIdentity : (msg.payload?.username || 'Anonymous'),
-            connectedAt: Date.now(),
-          })
-          broadcastPresence()
+          const state = clientAuth.get(ws)
+          updatePresence(ws, state?.identity ?? 'anonymous', msg.payload?.username)
         }
       } catch {
         // Ignore malformed messages
@@ -161,8 +221,10 @@ export function setupWebSocket(server: Server): WebSocketServer {
     })
 
     ws.on('close', () => {
+      if (authTimeout) clearTimeout(authTimeout)
       aliveClients.delete(ws)
       clients.delete(ws)
+      clientAuth.delete(ws)
       broadcastPresence()
       console.log('[ws] Client disconnected')
     })
@@ -182,7 +244,7 @@ export function broadcast(event: BroadcastEvent, excludeWs?: WebSocket) {
   const outbound = sequenceEvent(event)
   const message = JSON.stringify(outbound)
   for (const client of wss.clients) {
-    if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
+    if (client !== excludeWs && client.readyState === WebSocket.OPEN && isAuthorized(client)) {
       client.send(message)
     }
   }
