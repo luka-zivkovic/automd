@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Server } from 'node:http'
 import { isAuthDisabled, isSetupComplete, validateCredential, getIdentityFromCredential } from './auth-storage.js'
@@ -5,6 +6,9 @@ import { isAuthDisabled, isSetupComplete, validateCredential, getIdentityFromCre
 export interface BroadcastEvent {
   type: string
   payload: unknown
+  seq?: number
+  timestamp?: number
+  replayed?: boolean
 }
 
 interface ClientInfo {
@@ -14,6 +18,52 @@ interface ClientInfo {
 
 let wss: WebSocketServer | null = null
 const clients = new Map<WebSocket, ClientInfo>()
+const REPLAY_LIMIT = 500
+let serverId = crypto.randomUUID()
+let nextSeq = 1
+let replayLog: Required<Pick<BroadcastEvent, 'type' | 'payload' | 'seq' | 'timestamp'>>[] = []
+
+function shouldReplay(event: BroadcastEvent): boolean {
+  return event.type !== 'presence:list'
+}
+
+function parseReplayRequest(req: any): { since: number | null; clientServerId: string | null } {
+  try {
+    const url = new URL(req.url || '', `http://${req.headers.host ?? 'localhost'}`)
+    const clientServerId = url.searchParams.get('serverId')
+    const raw = url.searchParams.get('since')
+    if (!raw) return { since: null, clientServerId }
+    const parsed = Number(raw)
+    const since = Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+    return { since, clientServerId }
+  } catch {
+    return { since: null, clientServerId: null }
+  }
+}
+
+function sequenceEvent(event: BroadcastEvent): BroadcastEvent {
+  if (!shouldReplay(event)) return event
+  const sequenced = { ...event, seq: nextSeq++, timestamp: Date.now() } as Required<Pick<BroadcastEvent, 'type' | 'payload' | 'seq' | 'timestamp'>>
+  replayLog.push(sequenced)
+  if (replayLog.length > REPLAY_LIMIT) replayLog = replayLog.slice(-REPLAY_LIMIT)
+  return sequenced
+}
+
+function replayMissedEvents(ws: WebSocket, since: number | null) {
+  if (since === null) return
+  const lowestSeq = replayLog[0]?.seq
+  if (lowestSeq !== undefined && since < lowestSeq - 1) {
+    ws.send(JSON.stringify({
+      type: 'replay:gap',
+      payload: { since, lowestSeq, currentSeq: nextSeq - 1, serverId },
+    }))
+  }
+  const missed = replayLog.filter((event) => event.seq > since)
+  for (const event of missed) {
+    if (ws.readyState !== WebSocket.OPEN) return
+    ws.send(JSON.stringify({ ...event, replayed: true }))
+  }
+}
 
 function broadcastPresence() {
   const agents = Array.from(clients.values())
@@ -21,6 +71,9 @@ function broadcastPresence() {
 }
 
 export function setupWebSocket(server: Server): WebSocketServer {
+  serverId = crypto.randomUUID()
+  replayLog = []
+  nextSeq = 1
   wss = new WebSocketServer({
     server,
     path: '/ws',
@@ -77,8 +130,15 @@ export function setupWebSocket(server: Server): WebSocketServer {
 
   wss.on('connection', (ws, req) => {
     const serverIdentity = (req as any)._automdIdentity || 'anonymous'
+    const replayRequest = parseReplayRequest(req)
+    const since = replayRequest.clientServerId && replayRequest.clientServerId !== serverId ? 0 : replayRequest.since
     console.log('[ws] Client connected')
     aliveClients.add(ws)
+    ws.send(JSON.stringify({
+      type: 'ws:welcome',
+      payload: { serverId, currentSeq: nextSeq - 1, replayLimit: REPLAY_LIMIT },
+    }))
+    replayMissedEvents(ws, since)
 
     ws.on('pong', () => {
       aliveClients.add(ws)
@@ -119,7 +179,8 @@ export function setupWebSocket(server: Server): WebSocketServer {
 export function broadcast(event: BroadcastEvent, excludeWs?: WebSocket) {
   if (!wss) return
 
-  const message = JSON.stringify(event)
+  const outbound = sequenceEvent(event)
+  const message = JSON.stringify(outbound)
   for (const client of wss.clients) {
     if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
       client.send(message)

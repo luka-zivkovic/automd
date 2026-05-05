@@ -16,6 +16,7 @@ function createCollectingWs(port: number): Promise<{
 
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString())
+      if (msg.type === 'ws:welcome') return
       messages.push(msg)
       for (const waiter of waiters) {
         if (messages.length > waiter.index) waiter.resolve(messages[waiter.index])
