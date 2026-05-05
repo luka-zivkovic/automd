@@ -54,6 +54,7 @@ export function useServerSync() {
   const saveDebouncerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const knownFileIdsRef = useRef<Set<string>>(new Set())
   const knownFileNamesRef = useRef<Map<string, string>>(new Map())
+  const lastWsSeqRef = useRef(0)
 
   useEffect(() => {
     if (!HAS_SERVER) return // Local-only mode
@@ -156,7 +157,10 @@ export function useServerSync() {
       if (!mountedRef.current || !WS_BASE) return
 
       const token = useAuthStore.getState().token
-      const wsUrl = token ? `${WS_BASE}?token=${encodeURIComponent(token)}` : WS_BASE
+      const params = new URLSearchParams()
+      if (token) params.set('token', token)
+      if (lastWsSeqRef.current > 0) params.set('since', String(lastWsSeqRef.current))
+      const wsUrl = params.toString() ? `${WS_BASE}?${params.toString()}` : WS_BASE
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
@@ -180,6 +184,9 @@ export function useServerSync() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data)
+          if (typeof msg.seq === 'number' && Number.isFinite(msg.seq)) {
+            lastWsSeqRef.current = Math.max(lastWsSeqRef.current, msg.seq)
+          }
           isServerUpdateRef.current = true
 
           switch (msg.type) {

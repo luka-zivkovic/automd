@@ -8,13 +8,14 @@ import { createTestEnv } from './test-helpers.js'
  * Create a WS client that collects all messages into an array.
  * Use `waitForNthMessage(n)` to wait for the Nth message (0-based).
  */
-function createCollectingWs(port: number): Promise<{
+function createCollectingWs(port: number, since?: number): Promise<{
   ws: WebSocket
   messages: any[]
   waitForNthMessage: (n: number, timeoutMs?: number) => Promise<any>
 }> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${port}/ws`)
+    const qs = since !== undefined ? `?since=${since}` : ''
+    const ws = new WebSocket(`ws://localhost:${port}/ws${qs}`)
     const messages: any[] = []
     const waiters: Array<{ index: number; resolve: (msg: any) => void; reject: (err: Error) => void }> = []
 
@@ -153,5 +154,37 @@ describe('WebSocket broadcasts', () => {
     const msg = await waitForNthMessage(1)
     expect(msg.type).toBe('file:updated')
     expect(msg.payload.id).toBe(boardId)
+  })
+
+  it('should replay missed events after reconnect', async () => {
+    const createRes = await request(server)
+      .post('/api/files')
+      .send({ name: 'Replay', markdown: '## Todo\n' })
+    const boardId = createRes.body.id
+
+    const created = await waitForNthMessage(0)
+    expect(created.type).toBe('file:created')
+    expect(created.seq).toBeGreaterThan(0)
+
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    await request(server)
+      .put(`/api/files/${boardId}`)
+      .send({ markdown: '## Done\n' })
+
+    const replayClient = await createCollectingWs(port, created.seq)
+    try {
+      const replayed = await replayClient.waitForNthMessage(0)
+      expect(replayed.type).toBe('file:updated')
+      expect(replayed.payload.id).toBe(boardId)
+      expect(replayed.payload.markdown).toContain('## Done')
+      expect(replayed.seq).toBeGreaterThan(created.seq)
+      expect(replayed.replayed).toBe(true)
+    } finally {
+      replayClient.ws.close()
+    }
   })
 })
