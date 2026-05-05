@@ -3,24 +3,29 @@ import request from 'supertest'
 import WebSocket from 'ws'
 import type { Server } from 'node:http'
 import { createTestEnv } from './test-helpers.js'
+import { broadcast } from '../ws.js'
 
 /**
  * Create a WS client that collects all messages into an array.
  * Use `waitForNthMessage(n)` to wait for the Nth message (0-based).
  */
-function createCollectingWs(port: number, since?: number): Promise<{
+function createCollectingWs(port: number, options: { since?: number; serverId?: string; includeSystem?: boolean } = {}): Promise<{
   ws: WebSocket
   messages: any[]
   waitForNthMessage: (n: number, timeoutMs?: number) => Promise<any>
 }> {
   return new Promise((resolve, reject) => {
-    const qs = since !== undefined ? `?since=${since}` : ''
+    const params = new URLSearchParams()
+    if (options.since !== undefined) params.set('since', String(options.since))
+    if (options.serverId) params.set('serverId', options.serverId)
+    const qs = params.toString() ? `?${params.toString()}` : ''
     const ws = new WebSocket(`ws://localhost:${port}/ws${qs}`)
     const messages: any[] = []
     const waiters: Array<{ index: number; resolve: (msg: any) => void; reject: (err: Error) => void }> = []
 
     ws.on('message', (data) => {
       const msg = JSON.parse(data.toString())
+      if (!options.includeSystem && msg.type === 'ws:welcome') return
       messages.push(msg)
       // Resolve any waiters that are now satisfied
       for (const waiter of waiters) {
@@ -80,6 +85,19 @@ describe('WebSocket broadcasts', () => {
     const msg = await waitForNthMessage(0)
     expect(msg.type).toBe('file:created')
     expect(msg.payload.name).toBe('New Board')
+  })
+
+  it('should send welcome metadata on connect', async () => {
+    const client = await createCollectingWs(port, { includeSystem: true })
+    try {
+      const msg = await client.waitForNthMessage(0)
+      expect(msg.type).toBe('ws:welcome')
+      expect(msg.payload.serverId).toEqual(expect.any(String))
+      expect(msg.payload.currentSeq).toBeGreaterThanOrEqual(0)
+      expect(msg.payload.replayLimit).toBeGreaterThan(0)
+    } finally {
+      client.ws.close()
+    }
   })
 
   it('should broadcast file:updated event on markdown change', async () => {
@@ -175,7 +193,7 @@ describe('WebSocket broadcasts', () => {
       .put(`/api/files/${boardId}`)
       .send({ markdown: '## Done\n' })
 
-    const replayClient = await createCollectingWs(port, created.seq)
+    const replayClient = await createCollectingWs(port, { since: created.seq })
     try {
       const replayed = await replayClient.waitForNthMessage(0)
       expect(replayed.type).toBe('file:updated')
@@ -183,6 +201,89 @@ describe('WebSocket broadcasts', () => {
       expect(replayed.payload.markdown).toContain('## Done')
       expect(replayed.seq).toBeGreaterThan(created.seq)
       expect(replayed.replayed).toBe(true)
+    } finally {
+      replayClient.ws.close()
+    }
+  })
+
+  it('should replay from the beginning with since=0', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    const createRes = await request(server)
+      .post('/api/files')
+      .send({ name: 'Replay Since Zero', markdown: '## Todo\n' })
+
+    const replayClient = await createCollectingWs(port, { since: 0 })
+    try {
+      const replayed = await replayClient.waitForNthMessage(0)
+      expect(replayed.type).toBe('file:created')
+      expect(replayed.payload.id).toBe(createRes.body.id)
+      expect(replayed.replayed).toBe(true)
+    } finally {
+      replayClient.ws.close()
+    }
+  })
+
+  it('should not replay presence lists', async () => {
+    ws.send(JSON.stringify({ type: 'presence:join', payload: { username: 'Test' } }))
+    const presence = await waitForNthMessage(0)
+    expect(presence.type).toBe('presence:list')
+
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    const replayClient = await createCollectingWs(port, { since: 0 })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(replayClient.messages).toHaveLength(0)
+    } finally {
+      replayClient.ws.close()
+    }
+  })
+
+  it('should replay from zero when client server id is stale', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    const createRes = await request(server)
+      .post('/api/files')
+      .send({ name: 'Replay Server Id', markdown: '## Todo\n' })
+
+    const replayClient = await createCollectingWs(port, { since: 42, serverId: 'previous-server' })
+    try {
+      const replayed = await replayClient.waitForNthMessage(0)
+      expect(replayed.type).toBe('file:created')
+      expect(replayed.payload.id).toBe(createRes.body.id)
+      expect(replayed.replayed).toBe(true)
+    } finally {
+      replayClient.ws.close()
+    }
+  })
+
+  it('should report a replay gap when the buffer overflowed', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    for (let i = 0; i < 502; i++) {
+      broadcast({ type: 'test:event', payload: { i } })
+    }
+
+    const replayClient = await createCollectingWs(port, { since: 0 })
+    try {
+      const gap = await replayClient.waitForNthMessage(0)
+      expect(gap.type).toBe('replay:gap')
+      expect(gap.payload.since).toBe(0)
+      expect(gap.payload.lowestSeq).toBeGreaterThan(1)
+      expect(gap.payload.currentSeq).toBeGreaterThanOrEqual(gap.payload.lowestSeq)
     } finally {
       replayClient.ws.close()
     }

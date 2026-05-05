@@ -55,6 +55,7 @@ export function useServerSync() {
   const knownFileIdsRef = useRef<Set<string>>(new Set())
   const knownFileNamesRef = useRef<Map<string, string>>(new Map())
   const lastWsSeqRef = useRef(0)
+  const wsServerIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!HAS_SERVER) return // Local-only mode
@@ -160,6 +161,7 @@ export function useServerSync() {
       const params = new URLSearchParams()
       if (token) params.set('token', token)
       if (lastWsSeqRef.current > 0) params.set('since', String(lastWsSeqRef.current))
+      if (wsServerIdRef.current) params.set('serverId', wsServerIdRef.current)
       const wsUrl = params.toString() ? `${WS_BASE}?${params.toString()}` : WS_BASE
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
@@ -190,6 +192,29 @@ export function useServerSync() {
           isServerUpdateRef.current = true
 
           switch (msg.type) {
+            case 'ws:welcome': {
+              const { serverId, currentSeq } = msg.payload ?? {}
+              if (typeof serverId === 'string') {
+                const changed = wsServerIdRef.current !== null && wsServerIdRef.current !== serverId
+                if (changed) {
+                  lastWsSeqRef.current = 0
+                  loadFromServer(true)
+                }
+                wsServerIdRef.current = serverId
+              }
+              if (typeof currentSeq === 'number' && Number.isFinite(currentSeq)) {
+                lastWsSeqRef.current = Math.max(lastWsSeqRef.current, currentSeq)
+              }
+              break
+            }
+            case 'replay:gap': {
+              const { currentSeq } = msg.payload ?? {}
+              if (typeof currentSeq === 'number' && Number.isFinite(currentSeq)) {
+                lastWsSeqRef.current = Math.max(lastWsSeqRef.current, currentSeq)
+              }
+              loadFromServer(true)
+              break
+            }
             case 'file:updated': {
               const { id, markdown, actor } = msg.payload
               useFilesStore.getState().updateFileMarkdown(id, markdown)
