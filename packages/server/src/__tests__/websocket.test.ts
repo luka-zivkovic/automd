@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
 import request from 'supertest'
 import WebSocket from 'ws'
 import type { Server } from 'node:http'
 import { createTestEnv } from './test-helpers.js'
 import { broadcast } from '../ws.js'
+import { getAutomdDir } from '../config.js'
+import { resetAuthCache } from '../auth-storage.js'
 
 /**
  * Create a WS client that collects all messages into an array.
@@ -150,6 +154,112 @@ describe('WebSocket broadcasts', () => {
     const close = await closed
     expect(close.code).toBe(1008)
     expect(close.reason).toBe('Unauthorized')
+  })
+
+  it('should allow disabled-auth websocket recovery when setup is locked', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    await request(server)
+      .post('/api/auth/setup')
+      .send({ email: 'admin@test.com', password: 'password123' })
+    fs.rmSync(path.join(getAutomdDir(), 'auth.json'), { force: true })
+    resetAuthCache()
+    process.env.AUTOMD_DISABLE_AUTH = 'true'
+
+    let client: Awaited<ReturnType<typeof createCollectingWs>> | null = null
+    try {
+      client = await createCollectingWs(port, { includeSystem: true })
+      const msg = await client.waitForNthMessage(0)
+      expect(msg.type).toBe('ws:welcome')
+    } finally {
+      client?.ws.close()
+      delete process.env.AUTOMD_DISABLE_AUTH
+      resetAuthCache()
+    }
+  })
+
+  it('should close auth-required sockets that never send hello', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    await request(server)
+      .post('/api/auth/setup')
+      .send({ email: 'admin@test.com', password: 'password123' })
+
+    const client = new WebSocket(`ws://localhost:${port}/ws`)
+    const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+      client.once('close', (code, reason) => resolve({ code, reason: reason.toString() }))
+    })
+    await new Promise<void>((resolve, reject) => {
+      client.once('open', () => resolve())
+      client.once('error', reject)
+    })
+
+    const close = await closed
+    expect(close.code).toBe(1008)
+    expect(close.reason).toBe('Unauthorized')
+  })
+
+  it('should not broadcast to an auth-required socket before hello', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    await request(server)
+      .post('/api/auth/setup')
+      .send({ email: 'admin@test.com', password: 'password123' })
+
+    const client = new WebSocket(`ws://localhost:${port}/ws`)
+    const messages: any[] = []
+    client.on('message', (data) => messages.push(JSON.parse(data.toString())))
+    const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+      client.once('close', (code, reason) => resolve({ code, reason: reason.toString() }))
+    })
+    await new Promise<void>((resolve, reject) => {
+      client.once('open', () => resolve())
+      client.once('error', reject)
+    })
+
+    broadcast({ type: 'test:event', payload: { ok: true } })
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(messages).toHaveLength(0)
+
+    client.send(JSON.stringify({ type: 'presence:join', payload: { username: 'pre-auth' } }))
+    const close = await closed
+    expect(close.code).toBe(1008)
+    expect(close.reason).toBe('Unauthorized')
+  })
+
+  it('should ignore duplicate hello messages instead of replaying twice', async () => {
+    await new Promise<void>((resolve) => {
+      ws.once('close', () => resolve())
+      ws.close()
+    })
+
+    const createRes = await request(server)
+      .post('/api/files')
+      .send({ name: 'Duplicate Hello', markdown: '## Todo\n' })
+
+    const replayClient = await createCollectingWs(port, { since: 0, includeSystem: true })
+    try {
+      const welcome = await replayClient.waitForNthMessage(0)
+      const replayed = await replayClient.waitForNthMessage(1)
+      expect(welcome.type).toBe('ws:welcome')
+      expect(replayed.type).toBe('file:created')
+      expect(replayed.payload.id).toBe(createRes.body.id)
+
+      replayClient.ws.send(JSON.stringify({ type: 'ws:hello', payload: { since: 0 } }))
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      expect(replayClient.messages).toHaveLength(2)
+    } finally {
+      replayClient.ws.close()
+    }
   })
 
   it('should broadcast file:updated event on markdown change', async () => {

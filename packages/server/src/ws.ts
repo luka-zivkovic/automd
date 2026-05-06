@@ -25,9 +25,14 @@ let wss: WebSocketServer | null = null
 const clients = new Map<WebSocket, ClientInfo>()
 const clientAuth = new Map<WebSocket, ClientAuth>()
 const REPLAY_LIMIT = 500
+const HANDSHAKE_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 100 : 2_000
+const MAX_PENDING_HANDSHAKES = 100
+const MAX_PENDING_HANDSHAKES_PER_IP = 20
 let serverId = crypto.randomUUID()
 let nextSeq = 1
 let replayLog: Required<Pick<BroadcastEvent, 'type' | 'payload' | 'seq' | 'timestamp'>>[] = []
+let pendingHandshakeCount = 0
+const pendingHandshakesByIp = new Map<string, number>()
 
 function shouldReplay(event: BroadcastEvent): boolean {
   return event.type !== 'presence:list'
@@ -39,6 +44,30 @@ function isAuthRequired(): boolean {
 
 function isAuthorized(ws: WebSocket): boolean {
   return clientAuth.get(ws)?.authenticated === true
+}
+
+function remoteAddress(req: any): string {
+  return req?.socket?.remoteAddress ?? 'unknown'
+}
+
+function canAcceptPendingHandshake(ip: string): boolean {
+  return pendingHandshakeCount < MAX_PENDING_HANDSHAKES &&
+    (pendingHandshakesByIp.get(ip) ?? 0) < MAX_PENDING_HANDSHAKES_PER_IP
+}
+
+function trackPendingHandshake(ip: string): () => void {
+  pendingHandshakeCount++
+  pendingHandshakesByIp.set(ip, (pendingHandshakesByIp.get(ip) ?? 0) + 1)
+  let released = false
+
+  return () => {
+    if (released) return
+    released = true
+    pendingHandshakeCount = Math.max(0, pendingHandshakeCount - 1)
+    const nextCount = (pendingHandshakesByIp.get(ip) ?? 1) - 1
+    if (nextCount <= 0) pendingHandshakesByIp.delete(ip)
+    else pendingHandshakesByIp.set(ip, nextCount)
+  }
 }
 
 function parseReplayPayload(payload: unknown): { since: number | null; clientServerId: string | null } {
@@ -109,16 +138,25 @@ export function setupWebSocket(server: Server): WebSocketServer {
   nextSeq = 1
   clients.clear()
   clientAuth.clear()
+  pendingHandshakeCount = 0
+  pendingHandshakesByIp.clear()
   wss = new WebSocketServer({
     server,
     path: '/ws',
     verifyClient: (info, callback) => {
+      if (isAuthDisabled()) {
+        ;(info.req as any)._automdIdentity = 'anonymous'
+        ;(info.req as any)._automdAuthenticated = true
+        callback(true)
+        return
+      }
+
       if (isSetupLockedWithoutAuth()) {
         callback(false, 503, 'Authentication data missing')
         return
       }
 
-      if (isAuthDisabled() || !isSetupComplete()) {
+      if (!isSetupComplete()) {
         ;(info.req as any)._automdIdentity = 'anonymous'
         ;(info.req as any)._automdAuthenticated = true
         callback(true)
@@ -135,6 +173,12 @@ export function setupWebSocket(server: Server): WebSocketServer {
           callback(true)
           return
         }
+      }
+
+      const ip = remoteAddress(info.req)
+      if (!canAcceptPendingHandshake(ip)) {
+        callback(false, 429, 'Too many pending handshakes')
+        return
       }
 
       callback(true)
@@ -166,12 +210,16 @@ export function setupWebSocket(server: Server): WebSocketServer {
     console.log('[ws] Client connected')
     aliveClients.add(ws)
     clientAuth.set(ws, { authenticated, identity: serverIdentity })
+    let helloAccepted = false
+    const releasePendingHandshake = !authenticated && isAuthRequired()
+      ? trackPendingHandshake(remoteAddress(req))
+      : null
     const authTimeout = !authenticated && isAuthRequired()
       ? setTimeout(() => {
         if (!isAuthorized(ws) && ws.readyState === WebSocket.OPEN) {
           ws.close(1008, 'Unauthorized')
         }
-      }, 5_000)
+      }, HANDSHAKE_TIMEOUT_MS)
       : null
     authTimeout?.unref()
 
@@ -183,6 +231,7 @@ export function setupWebSocket(server: Server): WebSocketServer {
       try {
         const msg = JSON.parse(data.toString())
         if (msg.type === 'ws:hello') {
+          if (helloAccepted) return
           const payload = msg.payload ?? {}
           const state = clientAuth.get(ws) ?? { authenticated: false, identity: 'anonymous' }
           let identity = state.identity
@@ -199,8 +248,10 @@ export function setupWebSocket(server: Server): WebSocketServer {
             }
             clientAuth.set(ws, { authenticated: true, identity })
             if (authTimeout) clearTimeout(authTimeout)
+            releasePendingHandshake?.()
           }
 
+          helloAccepted = true
           sendWelcomeAndReplay(ws, parseReplayPayload(payload))
           if (payload.username !== undefined) {
             updatePresence(ws, identity, payload.username)
@@ -208,7 +259,10 @@ export function setupWebSocket(server: Server): WebSocketServer {
           return
         }
 
-        if (!isAuthorized(ws)) return
+        if (!isAuthorized(ws)) {
+          ws.close(1008, 'Unauthorized')
+          return
+        }
 
         if (msg.type === 'presence:join') {
           // Use server-verified identity when auth is enabled, not client-supplied username
@@ -216,12 +270,16 @@ export function setupWebSocket(server: Server): WebSocketServer {
           updatePresence(ws, state?.identity ?? 'anonymous', msg.payload?.username)
         }
       } catch {
+        if (!isAuthorized(ws)) {
+          ws.close(1008, 'Unauthorized')
+        }
         // Ignore malformed messages
       }
     })
 
     ws.on('close', () => {
       if (authTimeout) clearTimeout(authTimeout)
+      releasePendingHandshake?.()
       aliveClients.delete(ws)
       clients.delete(ws)
       clientAuth.delete(ws)
