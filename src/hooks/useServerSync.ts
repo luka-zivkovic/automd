@@ -158,12 +158,7 @@ export function useServerSync() {
       if (!mountedRef.current || !WS_BASE) return
 
       const token = useAuthStore.getState().token
-      const params = new URLSearchParams()
-      if (token) params.set('token', token)
-      if (lastWsSeqRef.current > 0) params.set('since', String(lastWsSeqRef.current))
-      if (wsServerIdRef.current) params.set('serverId', wsServerIdRef.current)
-      const wsUrl = params.toString() ? `${WS_BASE}?${params.toString()}` : WS_BASE
-      const ws = new WebSocket(wsUrl)
+      const ws = new WebSocket(WS_BASE)
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -171,11 +166,15 @@ export function useServerSync() {
         reconnectAttemptRef.current = 0
         useConnectionStore.getState().setStatus('connected')
 
-        // Send presence join
         const username = useUserStore.getState().username
         ws.send(JSON.stringify({
-          type: 'presence:join',
-          payload: { username: username || 'Anonymous' },
+          type: 'ws:hello',
+          payload: {
+            token: token || undefined,
+            username: username || 'Anonymous',
+            since: lastWsSeqRef.current > 0 ? lastWsSeqRef.current : undefined,
+            serverId: wsServerIdRef.current ?? undefined,
+          },
         }))
 
         // Re-fetch to catch events missed during disconnection
