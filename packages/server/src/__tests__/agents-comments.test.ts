@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
 import request from 'supertest'
 import WebSocket from 'ws'
 import type { Server } from 'node:http'
 import { createTestEnv } from './test-helpers.js'
 import { releaseStaleClaims } from '../agent-storage.js'
+import { getAutomdDir } from '../config.js'
+import { MAX_SKILL_BYTES } from '../skill-storage.js'
 
 function createCollectingWs(port: number): Promise<{
   ws: WebSocket
@@ -71,6 +75,115 @@ describe('Agents and comments API', () => {
 
     expect(res.status).toBe(201)
     expect(res.body.env).toEqual({ SAFE_FLAG: 'yes' })
+  })
+
+  it('lists local skills and returns skills attached to an agent credential', async () => {
+    const skillDir = path.join(getAutomdDir(), 'skills', 'review-checklist')
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: Review Checklist',
+      'description: Steps for reviewing changes safely.',
+      'tags:',
+      '  - review',
+      '  - safety',
+      '---',
+      '',
+      '# Review Checklist',
+      '',
+      'Check tests, edge cases, and rollout risk.',
+      '',
+    ].join('\n'), 'utf-8')
+
+    const skills = await request(app).get('/api/skills')
+    expect(skills.status).toBe(200)
+    expect(skills.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        slug: 'review-checklist',
+        name: 'Review Checklist',
+        description: 'Steps for reviewing changes safely.',
+        tags: ['review', 'safety'],
+      }),
+    ]))
+    expect(skills.body[0].body).toBeUndefined()
+
+    const skillDetail = await request(app).get('/api/skills/review-checklist')
+    expect(skillDetail.status).toBe(200)
+    expect(skillDetail.body.body).toContain('Check tests')
+
+    const missingSkill = await request(app).get('/api/skills/missing-skill')
+    expect(missingSkill.status).toBe(404)
+
+    const setup = await request(app)
+      .post('/api/auth/setup')
+      .send({ email: 'admin@test.com', password: 'password123' })
+    const token = setup.body.token
+
+    const agentRes = await request(app)
+      .post('/api/agents')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Review Bot', slug: 'review-bot', skills: ['Review Checklist'] })
+    expect(agentRes.status).toBe(201)
+    expect(agentRes.body.skills).toEqual(['review-checklist'])
+
+    const keyRes = await request(app)
+      .post('/api/auth/api-keys')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Review Bot Key', agentId: agentRes.body.id })
+
+    const unboundKeyRes = await request(app)
+      .post('/api/auth/api-keys')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Unbound Key' })
+
+    const globalWithApiKey = await request(app)
+      .get('/api/skills')
+      .set('Authorization', `Bearer ${keyRes.body.fullKey}`)
+    expect(globalWithApiKey.status).toBe(403)
+
+    const unboundMine = await request(app)
+      .get('/api/agents/me/skills')
+      .set('Authorization', `Bearer ${unboundKeyRes.body.fullKey}`)
+    expect(unboundMine.status).toBe(401)
+
+    const mine = await request(app)
+      .get('/api/agents/me/skills')
+      .set('Authorization', `Bearer ${keyRes.body.fullKey}`)
+
+    expect(mine.status).toBe(200)
+    expect(mine.body.count).toBe(1)
+    expect(mine.body.skills[0]).toMatchObject({
+      slug: 'review-checklist',
+      name: 'Review Checklist',
+    })
+    expect(mine.body.skills[0].body).toContain('Check tests')
+  })
+
+  it('rejects oversized skill detail while keeping skill list lightweight', async () => {
+    const skillDir = path.join(getAutomdDir(), 'skills', 'huge-skill')
+    fs.mkdirSync(skillDir, { recursive: true })
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+      '---',
+      'name: Huge Skill',
+      'description: Too large for detail responses.',
+      '---',
+      '',
+      'x'.repeat(MAX_SKILL_BYTES + 1),
+    ].join('\n'), 'utf-8')
+
+    const list = await request(app).get('/api/skills')
+    expect(list.status).toBe(200)
+    expect(list.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        slug: 'huge-skill',
+        name: 'Huge Skill',
+      }),
+    ]))
+    expect(list.body.find((skill: any) => skill.slug === 'huge-skill').body).toBeUndefined()
+
+    const detail = await request(app).get('/api/skills/huge-skill')
+    expect(detail.status).toBe(413)
+    expect(detail.body.maxBytes).toBe(MAX_SKILL_BYTES)
   })
 
   it('parses free-form comment bullets instead of dropping them', async () => {

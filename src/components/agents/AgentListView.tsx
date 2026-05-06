@@ -68,6 +68,7 @@ export function AgentListView() {
                   <p>@{agent.slug} · {agent.status}</p>
                   <p>{agent.runtime} {agent.model ? `· ${agent.model}` : ''}</p>
                   <p>{stat.done}/{stat.total} tasks done</p>
+                  {(agent.skills?.length ?? 0) > 0 && <p>{agent.skills.length} skills attached</p>}
                   {agent.capabilities.length > 0 && <p>{agent.capabilities.join(', ')}</p>}
                 </CardContent>
               </Card>

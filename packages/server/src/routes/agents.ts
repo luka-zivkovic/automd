@@ -11,6 +11,7 @@ import { withWriteLock } from '../write-lock.js'
 import { broadcast } from '../ws.js'
 import { queueEmbeddingUpdate } from '../embeddings/index.js'
 import { listActivity } from '../activity-storage.js'
+import { listSkillsForAgent, slugifySkill } from '../skill-storage.js'
 
 export const agentsRouter = Router()
 
@@ -66,6 +67,8 @@ function cleanAgentPayload(body: any): Partial<Agent> & { name?: string } {
   if (env) payload.env = env
   const capabilities = cleanStringArray(input.capabilities, 100, 100)
   if (capabilities) payload.capabilities = capabilities
+  const skills = cleanStringArray(input.skills, 100, 100)
+  if (skills) payload.skills = skills.map(slugifySkill)
   if (typeof input.body === 'string') payload.body = input.body.slice(0, 100000)
   return payload
 }
@@ -197,6 +200,16 @@ agentsRouter.get('/me/tasks', (req, res) => {
   res.json({ agentId: agent.id, count: results.length, results })
 })
 
+agentsRouter.get('/me/skills', (req, res) => {
+  const agent = currentAgent(req)
+  if (!agent) {
+    res.status(401).json({ error: 'No agent is bound to this credential' })
+    return
+  }
+  const skills = listSkillsForAgent(agent)
+  res.json({ agentId: agent.id, count: skills.length, skills })
+})
+
 agentsRouter.get('/:id/metrics', (req, res) => {
   const agent = getAgent(req.params.id)
   if (!agent) {
@@ -204,6 +217,16 @@ agentsRouter.get('/:id/metrics', (req, res) => {
     return
   }
   res.json(computeAgentMetrics(agent))
+})
+
+agentsRouter.get('/:id/skills', (req, res) => {
+  const agent = getAgent(req.params.id)
+  if (!agent) {
+    res.status(404).json({ error: 'Agent not found' })
+    return
+  }
+  const skills = listSkillsForAgent(agent)
+  res.json({ agentId: agent.id, count: skills.length, skills })
 })
 
 agentsRouter.get('/:id', (req, res) => {

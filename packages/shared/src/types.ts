@@ -30,9 +30,19 @@ export interface Agent {
   mcpServers: string[]
   env: Record<string, string>
   capabilities: string[]
+  skills: string[]
   createdAt: number
   updatedAt: number
   body?: string
+}
+
+export interface Skill {
+  slug: string
+  name: string
+  description: string | null
+  tags: string[]
+  updatedAt: number
+  body: string
 }
 
 export interface Comment {
