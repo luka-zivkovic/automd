@@ -63,6 +63,9 @@ export function AgentDetailView() {
         <Card><CardHeader><CardTitle className="text-base">Capabilities</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground">
           {agent.capabilities.length ? agent.capabilities.join(', ') : 'No capabilities listed.'}
         </CardContent></Card>
+        <Card><CardHeader><CardTitle className="text-base">Skills</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground">
+          {agent.skills?.length ? agent.skills.map((skill) => `/${skill}`).join(', ') : 'No skills attached.'}
+        </CardContent></Card>
       </div>
     </div>
   )

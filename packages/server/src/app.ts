@@ -16,6 +16,7 @@ import { relationshipsRouter } from './routes/relationships.js'
 import { agentsRouter } from './routes/agents.js'
 import { commentsRouter } from './routes/comments.js'
 import { inboxRouter } from './routes/inbox.js'
+import { skillsRouter } from './routes/skills.js'
 import { getStoragePath, StorageError } from './storage.js'
 import { getUpdateInfo } from './update-check.js'
 import { requireAuth } from './auth-middleware.js'
@@ -72,6 +73,7 @@ export function createApp() {
   app.use('/api/relationships', relationshipsRouter)
   app.use('/api/agents', agentsRouter)
   app.use('/api/inbox', inboxRouter)
+  app.use('/api/skills', skillsRouter)
 
   // In production, serve the Vite-built frontend as static files
   if (process.env.NODE_ENV === 'production') {

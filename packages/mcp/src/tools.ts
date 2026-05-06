@@ -217,6 +217,17 @@ export function registerTools(server: McpServer) {
     }
   })
 
+  server.registerTool('list_my_skills', {
+    title: 'List My Skills',
+    description: 'List SKILL.md knowledge packs attached to the agent bound to this MCP API key.',
+  }, async () => {
+    try {
+      return json(await api.getMySkills())
+    } catch (err) {
+      return errorResponse(err)
+    }
+  })
+
   server.registerTool('claim_task', {
     title: 'Claim Task',
     description: 'Claim a task for the agent bound to this MCP API key. Fails with 409 if another active agent has claimed it.',

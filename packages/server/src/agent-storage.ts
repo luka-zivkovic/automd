@@ -33,6 +33,7 @@ function defaultAgent(slug: string, partial: Partial<Agent> = {}): Agent {
     mcpServers: partial.mcpServers ?? [],
     env: partial.env ?? {},
     capabilities: partial.capabilities ?? [],
+    skills: partial.skills ?? [],
     createdAt: partial.createdAt ?? now,
     updatedAt: partial.updatedAt ?? now,
     body: partial.body ?? '',

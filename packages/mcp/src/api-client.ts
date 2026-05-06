@@ -240,6 +240,7 @@ export const api = {
   // Agents
   getMyAgent: () => request('/api/agents/me'),
   getMyTasks: (status?: string) => request(`/api/agents/me/tasks${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getMySkills: () => request('/api/agents/me/skills'),
   claimTask: (itemId: string, taskId: string) =>
     request('/api/agents/me/claim', {
       method: 'POST',
