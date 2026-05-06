@@ -6,6 +6,17 @@ import { getAutomdDir } from './config.js'
 function skillsDir() { return path.join(getAutomdDir(), 'skills') }
 function skillPath(slug: string) { return path.join(skillsDir(), slug, 'SKILL.md') }
 
+export const MAX_SKILL_BYTES = 256 * 1024
+
+export class SkillTooLargeError extends Error {
+  constructor(public readonly slug: string, public readonly maxBytes: number) {
+    super(`Skill ${slug} exceeds maximum size of ${maxBytes} bytes`)
+    this.name = 'SkillTooLargeError'
+  }
+}
+
+export type SkillSummary = Omit<Skill, 'body'>
+
 export function slugifySkill(value: string): string {
   return value.toLowerCase().trim().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'skill'
 }
@@ -34,10 +45,25 @@ function parseFrontmatter(raw: string): Record<string, unknown> {
   }
 
   const meta: Record<string, unknown> = {}
-  for (const line of trimmed.split('\n')) {
+  const lines = trimmed.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
     const match = /^([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(line)
     if (!match) continue
-    meta[match[1]] = parseScalar(match[2])
+    const key = match[1]
+    const value = match[2]
+    if (value.trim() === '') {
+      const values: string[] = []
+      while (i + 1 < lines.length) {
+        const itemMatch = /^\s*-\s*(.*)$/.exec(lines[i + 1])
+        if (!itemMatch) break
+        values.push(itemMatch[1].trim().replace(/^['"]|['"]$/g, ''))
+        i++
+      }
+      meta[key] = values.filter(Boolean)
+    } else {
+      meta[key] = parseScalar(value)
+    }
   }
   return meta
 }
@@ -83,13 +109,38 @@ function parseSkillMarkdown(markdown: string, fallbackSlug: string, updatedAt: n
   }
 }
 
-export function listSkills(): Skill[] {
+function toSummary(skill: Skill): SkillSummary {
+  const { body: _body, ...summary } = skill
+  return summary
+}
+
+function readPreview(filePath: string, bytes: number): string {
+  const fd = fs.openSync(filePath, 'r')
+  try {
+    const buffer = Buffer.alloc(bytes)
+    const read = fs.readSync(fd, buffer, 0, bytes, 0)
+    return buffer.subarray(0, read).toString('utf-8')
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+export function listSkills(): SkillSummary[] {
   ensureDir()
   return fs.readdirSync(skillsDir(), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => getSkill(entry.name))
-    .filter((skill): skill is Skill => !!skill)
+    .map((entry) => getSkillSummary(entry.name))
+    .filter((skill): skill is SkillSummary => !!skill)
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export function getSkillSummary(slug: string): SkillSummary | null {
+  const normalized = slugifySkill(slug)
+  const filePath = skillPath(normalized)
+  if (!fs.existsSync(filePath)) return null
+  const stat = fs.statSync(filePath)
+  const preview = readPreview(filePath, Math.min(stat.size, MAX_SKILL_BYTES))
+  return toSummary(parseSkillMarkdown(preview, normalized, stat.mtimeMs))
 }
 
 export function getSkill(slug: string): Skill | null {
@@ -97,11 +148,16 @@ export function getSkill(slug: string): Skill | null {
   const filePath = skillPath(normalized)
   if (!fs.existsSync(filePath)) return null
   const stat = fs.statSync(filePath)
+  if (stat.size > MAX_SKILL_BYTES) throw new SkillTooLargeError(normalized, MAX_SKILL_BYTES)
   return parseSkillMarkdown(fs.readFileSync(filePath, 'utf-8'), normalized, stat.mtimeMs)
 }
 
 export function listSkillsForAgent(agent: Agent): Skill[] {
   const requested = new Set((agent.skills ?? []).map(slugifySkill))
   if (requested.size === 0) return []
-  return listSkills().filter((skill) => requested.has(skill.slug))
+  return Array.from(requested)
+    .map((slug) => {
+      try { return getSkill(slug) } catch { return null }
+    })
+    .filter((skill): skill is Skill => !!skill)
 }
