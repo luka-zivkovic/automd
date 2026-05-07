@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import request from 'supertest'
@@ -57,6 +57,7 @@ describe('Agents and comments API', () => {
   })
 
   afterEach(async () => {
+    vi.unstubAllGlobals()
     await cleanup()
   })
 
@@ -184,6 +185,137 @@ describe('Agents and comments API', () => {
     const detail = await request(app).get('/api/skills/huge-skill')
     expect(detail.status).toBe(413)
     expect(detail.body.maxBytes).toBe(MAX_SKILL_BYTES)
+  })
+
+  it('imports a skill from a GitHub URL and stores it locally', async () => {
+    const markdown = [
+      '---',
+      'name: GitHub Review',
+      'description: Imported review workflow.',
+      'tags: [review, github]',
+      '---',
+      '',
+      '# GitHub Review',
+      '',
+      'Use this checklist for repository reviews.',
+      '',
+    ].join('\n')
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(markdown, {
+      status: 200,
+      headers: { 'content-length': String(Buffer.byteLength(markdown, 'utf-8')) },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const imported = await request(app)
+      .post('/api/skills/import')
+      .send({ sourceUrl: 'https://github.com/acme/agent-skills/tree/main/review-checklist' })
+
+    expect(imported.status).toBe(201)
+    expect(fetchMock.mock.calls[0][0]).toBe('https://raw.githubusercontent.com/acme/agent-skills/main/review-checklist/SKILL.md')
+    expect(imported.body).toMatchObject({
+      created: true,
+      bytes: Buffer.byteLength(markdown, 'utf-8'),
+      source: {
+        provider: 'github',
+        url: 'https://github.com/acme/agent-skills/tree/main/review-checklist',
+      },
+      skill: {
+        slug: 'review-checklist',
+        name: 'GitHub Review',
+        description: 'Imported review workflow.',
+        tags: ['review', 'github'],
+      },
+    })
+    expect(imported.body.skill.body).toContain('repository reviews')
+
+    const list = await request(app).get('/api/skills')
+    expect(list.status).toBe(200)
+    expect(list.body.find((skill: any) => skill.slug === 'review-checklist').body).toBeUndefined()
+
+    const detail = await request(app).get('/api/skills/review-checklist')
+    expect(detail.status).toBe(200)
+    expect(detail.body.body).toContain('repository reviews')
+    expect(fs.existsSync(path.join(getAutomdDir(), 'skills', 'review-checklist', 'SKILL.md'))).toBe(true)
+  })
+
+  it('supports explicit skill import overwrite and rejects accidental collisions', async () => {
+    const initial = '# Initial Skill\n\nFirst copy.'
+    const updated = '# Initial Skill\n\nUpdated copy.'
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(initial, { status: 200 }))
+      .mockResolvedValueOnce(new Response(initial, { status: 200 }))
+      .mockResolvedValueOnce(new Response(updated, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const first = await request(app)
+      .post('/api/skills/import')
+      .send({ sourceUrl: 'https://github.com/acme/agent-skills/blob/main/skills/imported/SKILL.md' })
+    expect(first.status).toBe(201)
+
+    const collision = await request(app)
+      .post('/api/skills/import')
+      .send({ sourceUrl: 'https://github.com/acme/agent-skills/blob/main/skills/imported/SKILL.md' })
+    expect(collision.status).toBe(409)
+    expect(collision.body.slug).toBe('imported')
+
+    const overwrite = await request(app)
+      .post('/api/skills/import')
+      .send({
+        sourceUrl: 'https://github.com/acme/agent-skills/blob/main/skills/imported/SKILL.md',
+        overwrite: true,
+      })
+    expect(overwrite.status).toBe(200)
+    expect(overwrite.body.created).toBe(false)
+    expect(overwrite.body.skill.body).toContain('Updated copy')
+  })
+
+  it('requires an admin session for GitHub skill imports once auth is configured', async () => {
+    const setup = await request(app)
+      .post('/api/auth/setup')
+      .send({ email: 'admin@test.com', password: 'password123' })
+    const token = setup.body.token
+
+    const keyRes = await request(app)
+      .post('/api/auth/api-keys')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Automation Key' })
+    const fetchMock = vi.fn(async () => new Response('# Imported\n', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const apiKeyImport = await request(app)
+      .post('/api/skills/import')
+      .set('Authorization', `Bearer ${keyRes.body.fullKey}`)
+      .send({ sourceUrl: 'https://github.com/acme/agent-skills/blob/main/session-only/SKILL.md' })
+    expect(apiKeyImport.status).toBe(403)
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    const sessionImport = await request(app)
+      .post('/api/skills/import')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ sourceUrl: 'https://github.com/acme/agent-skills/blob/main/session-only/SKILL.md' })
+    expect(sessionImport.status).toBe(201)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects unsupported or oversized GitHub skill imports', async () => {
+    const unsupported = await request(app)
+      .post('/api/skills/import')
+      .send({ sourceUrl: 'https://example.com/acme/skills/blob/main/SKILL.md' })
+    expect(unsupported.status).toBe(400)
+
+    const fetchMock = vi.fn(async () => new Response('x'.repeat(64), {
+      status: 200,
+      headers: { 'content-length': String(MAX_SKILL_BYTES + 1) },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const tooLarge = await request(app)
+      .post('/api/skills/import')
+      .send({ sourceUrl: 'https://github.com/acme/agent-skills/blob/main/large/SKILL.md' })
+    expect(tooLarge.status).toBe(413)
+    expect(tooLarge.body.maxBytes).toBe(MAX_SKILL_BYTES)
+    expect(fs.existsSync(path.join(getAutomdDir(), 'skills', 'large', 'SKILL.md'))).toBe(false)
   })
 
   it('parses free-form comment bullets instead of dropping them', async () => {
