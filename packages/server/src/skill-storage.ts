@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { Buffer } from 'node:buffer'
 import type { Agent, Skill } from '@automd/shared'
 import { getAutomdDir } from './config.js'
 
@@ -7,6 +8,20 @@ function skillsDir() { return path.join(getAutomdDir(), 'skills') }
 function skillPath(slug: string) { return path.join(skillsDir(), slug, 'SKILL.md') }
 
 export const MAX_SKILL_BYTES = 256 * 1024
+
+export class SkillExistsError extends Error {
+  constructor(public readonly slug: string) {
+    super(`Skill ${slug} already exists`)
+    this.name = 'SkillExistsError'
+  }
+}
+
+export class InvalidSkillError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'InvalidSkillError'
+  }
+}
 
 export class SkillTooLargeError extends Error {
   constructor(public readonly slug: string, public readonly maxBytes: number) {
@@ -16,6 +31,10 @@ export class SkillTooLargeError extends Error {
 }
 
 export type SkillSummary = Omit<Skill, 'body'>
+export interface SkillSaveResult {
+  skill: Skill
+  created: boolean
+}
 
 export function slugifySkill(value: string): string {
   return value.toLowerCase().trim().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'skill'
@@ -150,6 +169,30 @@ export function getSkill(slug: string): Skill | null {
   const stat = fs.statSync(filePath)
   if (stat.size > MAX_SKILL_BYTES) throw new SkillTooLargeError(normalized, MAX_SKILL_BYTES)
   return parseSkillMarkdown(fs.readFileSync(filePath, 'utf-8'), normalized, stat.mtimeMs)
+}
+
+export function saveSkillMarkdown(
+  markdown: string,
+  slug: string,
+  options: { overwrite?: boolean } = {},
+): SkillSaveResult {
+  const normalized = slugifySkill(slug)
+  const bytes = Buffer.byteLength(markdown, 'utf-8')
+  if (!markdown.trim()) throw new InvalidSkillError('SKILL.md content is required')
+  if (bytes > MAX_SKILL_BYTES) throw new SkillTooLargeError(normalized, MAX_SKILL_BYTES)
+
+  const filePath = skillPath(normalized)
+  const exists = fs.existsSync(filePath)
+  if (exists && options.overwrite !== true) throw new SkillExistsError(normalized)
+
+  ensureDir(normalized)
+  const tmpPath = path.join(path.dirname(filePath), `.SKILL.md.tmp-${process.pid}-${Date.now()}`)
+  fs.writeFileSync(tmpPath, `${markdown.trimEnd()}\n`, 'utf-8')
+  fs.renameSync(tmpPath, filePath)
+
+  const skill = getSkill(normalized)
+  if (!skill) throw new InvalidSkillError('Saved skill could not be read')
+  return { skill, created: !exists }
 }
 
 export function listSkillsForAgent(agent: Agent): Skill[] {

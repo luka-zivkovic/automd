@@ -11,5 +11,6 @@ export type {
   Agent,
   AgentRuntime,
   AgentStatus,
+  Skill,
   Comment,
 } from '@automd/shared'
